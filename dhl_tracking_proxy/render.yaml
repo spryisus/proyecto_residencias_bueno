@@ -1,0 +1,23 @@
+# Render.com configuration file
+# Este archivo configura el despliegue automático en Render.com
+
+services:
+  - type: web
+    name: dhl-tracking-proxy
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: "false"
+    healthCheckPath: /keepalive  # Usa /keepalive para mantener el servicio activo y verificar precarga
+    # Plan gratuito (se duerme tras inactividad)
+    plan: free
+    # Para plan pagado, descomentar:
+    # plan: starter
+
+

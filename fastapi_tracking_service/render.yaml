@@ -1,0 +1,27 @@
+# Render.com configuration file para FastAPI Tracking Service
+# Este archivo configura el despliegue automático en Render.com
+
+services:
+  - type: web
+    name: fastapi-tracking-service
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: CACHE_TTL_SECONDS
+        value: "1800"
+      - key: UPSTREAM_TIMEOUT_SECONDS
+        value: "10"
+      # Actualiza esta URL con la URL de tu proxy Puppeteer en Render
+      - key: PUPPETEER_PROXY_URL
+        value: "https://dhl-tracking-proxy.onrender.com"
+      - key: ALLOWED_ORIGINS
+        value: "*"
+    healthCheckPath: /health
+    # Plan gratuito (se duerme tras inactividad)
+    plan: free
+    # Para plan pagado (siempre activo), descomentar:
+    # plan: starter
+

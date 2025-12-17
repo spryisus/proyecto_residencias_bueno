@@ -1,0 +1,3 @@
+# Render ignore file
+# Este archivo le dice a Render que ignore el Dockerfile y use Node directamente
+

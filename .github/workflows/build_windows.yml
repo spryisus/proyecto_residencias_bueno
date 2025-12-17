@@ -1,0 +1,65 @@
+name: Build Windows Executable
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.27.3'
+        channel: 'stable'
+    
+    - name: Enable Windows Desktop
+      run: flutter config --enable-windows-desktop
+    
+    - name: Get dependencies
+      run: flutter pub get
+    
+    - name: Build Windows Release
+      run: flutter build windows --release
+    
+    - name: Upload Windows Executable
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-executable
+        path: build/windows/x64/runner/Release/
+        retention-days: 30
+
+  build-linux:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.27.3'
+        channel: 'stable'
+    
+    - name: Enable Linux Desktop
+      run: flutter config --enable-linux-desktop
+    
+    - name: Get dependencies
+      run: flutter pub get
+    
+    - name: Build Linux Release
+      run: flutter build linux --release
+    
+    - name: Upload Linux Executable
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-executable
+        path: build/linux/x64/release/bundle/
+        retention-days: 30
