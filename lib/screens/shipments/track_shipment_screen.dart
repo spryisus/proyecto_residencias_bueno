@@ -22,7 +22,7 @@ class _TrackShipmentScreenState extends State<TrackShipmentScreen> {
     super.initState();
     // Inicializar servicio con la URL correcta según la plataforma y ambiente
     // FastAPI primero (rápido); proxy Puppeteer como respaldo.
-    // Para usar producción (cloud) en el proxy, cambiar useProduction: true.
+    // getFastApiBase() usa producción automáticamente en web, local en desarrollo
     _trackingService = DHLTrackingService(
       fastApiBaseUrl: DHLProxyConfig.getFastApiBase(),
       proxyUrl: DHLProxyConfig.getProxyUrl(useProduction: false),

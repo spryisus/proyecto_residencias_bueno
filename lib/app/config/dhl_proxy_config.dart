@@ -28,6 +28,10 @@ class DHLProxyConfig {
   /// ===========================
   /// FastAPI (scraping ligero)
   /// ===========================
+  /// URL del microservicio FastAPI en producción (Render/Railway/etc)
+  static const String fastApiProductionUrl = 'https://proyecto-residencias-bueno.onrender.com';
+  
+  /// URLs locales para desarrollo
   static const String fastApiWebDesktop = 'http://localhost:8000';
   static const String fastApiAndroidEmu = 'http://10.0.2.2:8000';
   /// Para dispositivo físico, actualiza con la IP LAN de tu PC corriendo FastAPI
@@ -37,8 +41,35 @@ class DHLProxyConfig {
   // MÉTODOS PARA OBTENER LA URL CORRECTA
   // ============================================
   
-  /// Obtiene la URL base de FastAPI según plataforma
-  static String getFastApiBase() {
+  /// Obtiene la URL base de FastAPI según plataforma y ambiente
+  /// 
+  /// [useProduction] - Si es true, usa la URL de producción (cloud)
+  ///                   Si es false o null, usa URLs locales para desarrollo
+  static String getFastApiBase({bool? useProduction}) {
+    // Si se especifica explícitamente usar producción
+    if (useProduction == true) {
+      return fastApiProductionUrl;
+    }
+    
+    // Si se especifica explícitamente usar desarrollo local
+    if (useProduction == false) {
+      return _getLocalFastApiUrl();
+    }
+    
+    // Detección automática: por defecto usar producción en web, local en desarrollo
+    // Puedes cambiar esto según tu necesidad
+    if (kIsWeb) {
+      // Para web, puedes usar producción o local según prefieras
+      // Por defecto usamos producción en web
+      return fastApiProductionUrl;
+    }
+    
+    // Para móvil/desktop, usar local por defecto
+    return _getLocalFastApiUrl();
+  }
+  
+  /// Obtiene la URL local de FastAPI según la plataforma
+  static String _getLocalFastApiUrl() {
     if (kIsWeb) {
       return fastApiWebDesktop;
     }
@@ -150,9 +181,12 @@ class DHLProxyConfig {
   /// Obtiene información sobre la configuración actual
   static Map<String, dynamic> getConfigInfo() {
     final currentUrl = getProxyUrl();
+    final currentFastApiUrl = getFastApiBase();
     return {
       'currentUrl': currentUrl,
+      'currentFastApiUrl': currentFastApiUrl,
       'isProduction': isProductionUrl(currentUrl),
+      'isFastApiProduction': isProductionUrl(currentFastApiUrl),
       'platform': kIsWeb 
           ? 'web' 
           : (Platform.isAndroid 
@@ -161,6 +195,7 @@ class DHLProxyConfig {
                   ? 'ios' 
                   : 'desktop')),
       'productionUrl': productionUrl,
+      'fastApiProductionUrl': fastApiProductionUrl,
       'localUrl': localUrl,
     };
   }

@@ -294,6 +294,21 @@ async def fetch_via_proxy(tracking_number: str) -> TrackingData:
     )
 
 
+@app.get("/")
+async def root():
+    """Endpoint raíz que devuelve información del servicio"""
+    return {
+        "service": "DHL Tracking Service",
+        "version": "1.0.0",
+        "status": "running",
+        "endpoints": {
+            "health": "/health",
+            "tracking": "/tracking/{tracking_number}",
+        },
+        "documentation": "Visita /docs para la documentación interactiva de la API",
+    }
+
+
 @app.get("/health")
 async def health():
     cleanup_expired()

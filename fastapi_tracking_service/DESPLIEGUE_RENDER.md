@@ -86,11 +86,13 @@ curl "https://tu-fastapi.onrender.com/tracking/9068591556"
 
 ## 🔄 Paso 6: Actualizar Flutter
 
-Actualiza la URL de producción en `lib/app/config/dhl_proxy_config.dart`:
+La URL de producción ya está configurada en `lib/app/config/dhl_proxy_config.dart`:
 
 ```dart
-static const String fastApiProductionUrl = 'https://tu-fastapi.onrender.com';
+static const String fastApiProductionUrl = 'https://proyecto-residencias-bueno.onrender.com';
 ```
+
+Si necesitas cambiarla, actualiza esta constante en el archivo de configuración.
 
 ---
 
