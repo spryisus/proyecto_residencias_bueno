@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../data/services/dhl_tracking_service.dart';
@@ -25,7 +26,8 @@ class _TrackShipmentScreenState extends State<TrackShipmentScreen> {
     // getFastApiBase() usa producción automáticamente en web, local en desarrollo
     _trackingService = DHLTrackingService(
       fastApiBaseUrl: DHLProxyConfig.getFastApiBase(),
-      proxyUrl: DHLProxyConfig.getProxyUrl(useProduction: false),
+      // En web usar proxy de producción como fallback, en local usar local
+      proxyUrl: DHLProxyConfig.getProxyUrl(useProduction: kIsWeb),
     );
   }
   bool _isSearching = false;

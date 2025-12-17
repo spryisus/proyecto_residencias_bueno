@@ -1,5 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:http/http.dart' as http;
 import '../models/tracking_event_model.dart';
 import '../../domain/entities/tracking_event.dart';
@@ -101,71 +102,128 @@ class DHLTrackingService {
     // 1) Intentar FastAPI (rápido)
     if (fastApiBaseUrl != null && fastApiBaseUrl!.isNotEmpty) {
       try {
+        debugPrint('🔍 Intentando tracking via FastAPI: $fastApiBaseUrl');
         return await _trackViaFastApi(cleanTrackingNumber);
       } catch (e) {
         debugPrint('⚠️ FastAPI falló: $e');
+        // Continuar al siguiente método
       }
     }
 
     // 2) Intentar proxy Puppeteer (respaldo)
     if (proxyUrl != null && proxyUrl!.isNotEmpty) {
       try {
+        debugPrint('🔍 Intentando tracking via Proxy Puppeteer: $proxyUrl');
         return await _trackViaProxy(cleanTrackingNumber);
       } catch (e) {
         debugPrint('⚠️ Proxy Puppeteer falló: $e');
+        // Continuar al siguiente método solo si no es web
       }
     }
     
-    // 3) Último recurso: método directo
+    // 3) Último recurso: método directo (solo si NO es web, porque CORS bloquea en navegador)
+    if (kIsWeb) {
+      throw Exception(
+        'No se pudo obtener el tracking. FastAPI y Proxy fallaron. '
+        'Verifica que el servicio FastAPI esté disponible en: $fastApiBaseUrl'
+      );
+    }
+    
     return _trackDirectly(cleanTrackingNumber);
   }
 
   /// Consulta tracking usando FastAPI (scraping ligero)
+  /// Intenta hasta 2 veces para manejar cold starts de Render
   Future<ShipmentTracking> _trackViaFastApi(String trackingNumber) async {
     final base = fastApiBaseUrl!.endsWith('/')
         ? fastApiBaseUrl!.substring(0, fastApiBaseUrl!.length - 1)
         : fastApiBaseUrl!;
     final url = Uri.parse('$base/tracking/$trackingNumber');
 
-    final response = await http.get(url).timeout(
-      const Duration(seconds: 10),
-      onTimeout: () {
-        throw Exception('Timeout FastAPI');
-      },
-    );
+    debugPrint('🌐 URL FastAPI: $url');
 
-    if (response.statusCode != 200) {
-      throw Exception('FastAPI devolvió código ${response.statusCode}');
+    // Intentar hasta 2 veces para manejar cold starts de Render (plan gratuito)
+    for (int attempt = 1; attempt <= 2; attempt++) {
+      try {
+        debugPrint('🔄 Intento $attempt/2 de FastAPI...');
+        
+        // Timeout aumentado a 60 segundos para dar tiempo al cold start de Render
+        http.Response? response;
+        try {
+          response = await http.get(url).timeout(
+            const Duration(seconds: 60),
+          );
+        } on TimeoutException {
+          if (attempt < 2) {
+            debugPrint('⏳ Timeout en intento $attempt, reintentando...');
+            await Future.delayed(const Duration(seconds: 2));
+            continue;
+          }
+          throw Exception('Timeout FastAPI: El servicio puede estar iniciando (cold start ~30-60s). Intenta de nuevo en unos segundos.');
+        }
+
+        debugPrint('📡 Respuesta FastAPI: ${response.statusCode}');
+
+        if (response.statusCode == 404) {
+          if (attempt < 2) {
+            debugPrint('⚠️ 404 en intento $attempt, puede ser cold start. Reintentando...');
+            await Future.delayed(const Duration(seconds: 3));
+            continue;
+          }
+          throw Exception('Endpoint no encontrado. Verifica que el servicio FastAPI esté desplegado correctamente.');
+        }
+
+        if (response.statusCode != 200) {
+          final errorBody = response.body.length > 200 
+              ? response.body.substring(0, 200) 
+              : response.body;
+          throw Exception('FastAPI devolvió código ${response.statusCode}: $errorBody');
+        }
+
+        // Si llegamos aquí, la respuesta fue exitosa
+        final jsonData = jsonDecode(response.body) as Map<String, dynamic>;
+        if (jsonData['success'] != true || jsonData['data'] == null) {
+          throw Exception(jsonData['detail'] as String? ?? 'FastAPI sin datos');
+        }
+
+        final data = jsonData['data'] as Map<String, dynamic>;
+        final events = (data['events'] as List<dynamic>?)
+                ?.map((e) => TrackingEventModel.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            [];
+
+        final status = data['status'] as String? ?? 'Desconocido';
+        final estimatedDeliveryString = data['estimatedDelivery'] as String?;
+        DateTime? estimatedDeliveryDate;
+        if (estimatedDeliveryString != null && estimatedDeliveryString.isNotEmpty) {
+          try {
+            estimatedDeliveryDate = DateTime.parse(estimatedDeliveryString);
+          } catch (e) {
+            debugPrint('Error parsing estimatedDelivery date: $e');
+          }
+        }
+
+        return ShipmentTracking(
+          trackingNumber: data['trackingNumber'] as String? ?? trackingNumber,
+          status: status,
+          events: events,
+          origin: data['origin'] as String?,
+          destination: data['destination'] as String?,
+          currentLocation: data['currentLocation'] as String?,
+          estimatedDelivery: estimatedDeliveryDate,
+        );
+      } catch (e) {
+        if (attempt < 2 && (e.toString().contains('Timeout') || e.toString().contains('404'))) {
+          debugPrint('⚠️ Error en intento $attempt: $e. Reintentando...');
+          await Future.delayed(const Duration(seconds: 3));
+          continue;
+        }
+        rethrow;
+      }
     }
-
-    final jsonData = jsonDecode(response.body) as Map<String, dynamic>;
-    if (jsonData['success'] != true || jsonData['data'] == null) {
-      throw Exception(jsonData['detail'] as String? ?? 'FastAPI sin datos');
-    }
-
-    final data = jsonData['data'] as Map<String, dynamic>;
-    final events = (data['events'] as List<dynamic>?)
-            ?.map((e) => TrackingEventModel.fromJson(e as Map<String, dynamic>))
-            .toList() ??
-        [];
-
-    final status = data['status'] as String? ?? 'Desconocido';
-
-    DateTime? estimatedDelivery;
-    final estimatedRaw = data['estimatedDelivery'];
-    if (estimatedRaw is String) {
-      estimatedDelivery = DateTime.tryParse(estimatedRaw);
-    }
-
-    return ShipmentTracking(
-      trackingNumber: data['trackingNumber'] as String? ?? trackingNumber,
-      status: status,
-      events: events,
-      origin: data['origin'] as String?,
-      destination: data['destination'] as String?,
-      currentLocation: data['currentLocation'] as String?,
-      estimatedDelivery: estimatedDelivery,
-    );
+    
+    // Si llegamos aquí, todos los intentos fallaron
+    throw Exception('FastAPI no respondió después de 2 intentos. El servicio puede estar iniciando.');
   }
 
   /// Consulta tracking usando el proxy backend (Node.js + Puppeteer)
