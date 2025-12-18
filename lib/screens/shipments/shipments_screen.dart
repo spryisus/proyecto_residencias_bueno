@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../widgets/animated_card.dart';
 import '../settings/settings_screen.dart';
 import 'track_shipment_screen.dart';
-import 'shipment_reports_screen.dart';
 
 class ShipmentsScreen extends StatelessWidget {
   const ShipmentsScreen({super.key});
@@ -53,61 +52,27 @@ class ShipmentsScreen extends StatelessWidget {
                 builder: (context, constraints) {
                   if (constraints.maxWidth < 600) {
                     // Una columna en pantallas pequeñas (centrada)
-                    return Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: _buildEnvioOptionCard(
-                            context,
-                            icon: Icons.local_shipping,
-                            title: 'Rastrear Envío',
-                            subtitle: 'Consulta el estado de tus envíos',
-                            color: Colors.blue,
-                            onTap: () => _navigateToTrackShipment(context),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        Expanded(
-                          child: _buildEnvioOptionCard(
-                            context,
-                            icon: Icons.assessment,
-                            title: 'Reportes de Envíos',
-                            subtitle: 'Genera reportes y estadísticas',
-                            color: Colors.green,
-                            onTap: () => _navigateToShipmentReports(context),
-                          ),
-                        ),
-                      ],
+                    return Center(
+                      child: _buildEnvioOptionCard(
+                        context,
+                        icon: Icons.local_shipping,
+                        title: 'Rastrear Envío',
+                        subtitle: 'Consulta el estado de tus envíos',
+                        color: Colors.blue,
+                        onTap: () => _navigateToTrackShipment(context),
+                      ),
                     );
                   } else {
-                    // Dos columnas centradas en pantallas medianas y grandes
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          flex: 1,
-                          child: _buildEnvioOptionCard(
-                            context,
-                            icon: Icons.local_shipping,
-                            title: 'Rastrear Envío',
-                            subtitle: 'Consulta el estado de tus envíos',
-                            color: Colors.blue,
-                            onTap: () => _navigateToTrackShipment(context),
-                          ),
-                        ),
-                        const SizedBox(width: 20),
-                        Expanded(
-                          flex: 1,
-                          child: _buildEnvioOptionCard(
-                            context,
-                            icon: Icons.assessment,
-                            title: 'Reportes de Envíos',
-                            subtitle: 'Genera reportes y estadísticas',
-                            color: Colors.green,
-                            onTap: () => _navigateToShipmentReports(context),
-                          ),
-                        ),
-                      ],
+                    // Pantallas medianas y grandes - centrado
+                    return Center(
+                      child: _buildEnvioOptionCard(
+                        context,
+                        icon: Icons.local_shipping,
+                        title: 'Rastrear Envío',
+                        subtitle: 'Consulta el estado de tus envíos',
+                        color: Colors.blue,
+                        onTap: () => _navigateToTrackShipment(context),
+                      ),
                     );
                   }
                 },
@@ -176,15 +141,6 @@ class ShipmentsScreen extends StatelessWidget {
       context,
       MaterialPageRoute(
         builder: (_) => const TrackShipmentScreen(),
-      ),
-    );
-  }
-
-  void _navigateToShipmentReports(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const ShipmentReportsScreen(),
       ),
     );
   }

@@ -6,7 +6,6 @@ import '../../domain/repositories/inventario_repository.dart';
 import '../../core/di/injection_container.dart';
 import '../../app/config/supabase_client.dart' show supabaseClient;
 import 'qr_scanner_screen.dart';
-import 'inventory_report_screen.dart';
 import 'inventory_type_selection_screen.dart';
 
 class InventoryScreen extends StatefulWidget {
@@ -317,44 +316,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => InventoryReportScreen(
-                            category: item.categorias.isNotEmpty 
-                                ? item.categorias.first.nombre 
-                                : 'General',
-                          ),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.assessment, size: 16),
-                    label: const Text('Ver Reporte'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF003366),
-                    ),
-                  ),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  _showAdjustmentDialog(context, item);
+                },
+                icon: const Icon(Icons.edit, size: 16),
+                label: const Text('Ajustar'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF003366),
+                  foregroundColor: Colors.white,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      _showAdjustmentDialog(context, item);
-                    },
-                    icon: const Icon(Icons.edit, size: 16),
-                    label: const Text('Ajustar'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF003366),
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ],
         ),

@@ -4,7 +4,6 @@ import '../../data/local/inventory_session_storage.dart';
 import '../../domain/entities/inventory_session.dart';
 import '../../domain/repositories/inventario_repository.dart';
 import '../settings/settings_screen.dart';
-import 'reports_screen.dart';
 import '../auth/login_screen.dart';
 import '../inventory/inventory_screen.dart';
 import '../shipments/shipments_screen.dart';
@@ -206,21 +205,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.assessment_outlined, size: 24),
-              title: Text(
-                'Reportes',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              minVerticalPadding: 16,
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ReportsScreen()),
-                );
-              },
-            ),
-            ListTile(
               leading: const Icon(Icons.description_outlined, size: 24),
               title: Text(
                 'Solicitud SDR',
@@ -331,8 +315,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     crossAxisCount = 2;
                     childAspectRatio = 1.3;
                   } else {
-                    // Desktop: 4 columnas
-                    crossAxisCount = 4;
+                    // Desktop: 3 columnas
+                    crossAxisCount = 3;
                     childAspectRatio = 1.1;
                   }
                   
@@ -367,19 +351,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const ShipmentsScreen()),
-                      );
-                    },
-                  ),
-                  _buildStatCard(
-                    context,
-                    'Reportes',
-                    'Generar reportes',
-                    Icons.assessment_outlined,
-                    Colors.orange,
-                    () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const ReportsScreen()),
                       );
                     },
                   ),

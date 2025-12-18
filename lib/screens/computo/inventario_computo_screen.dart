@@ -30,6 +30,7 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
   Set<String> _equiposCompletados = {}; // Set de inventarios completados
   String? _pendingSessionId; // ID de la sesión pendiente actual
   InventorySession? _pendingSession; // Sesión pendiente completa
+  bool _isAdmin = false; // Permisos de administrador
   
   // Opciones de filtros (agrupación y vista de grid eliminadas)
   String? _filtroUbicacion;
@@ -41,7 +42,38 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
   void initState() {
     super.initState();
     print('🚀 InventarioComputoScreen inicializada');
+    _checkAdminStatus();
     _loadEquipos();
+  }
+
+  Future<void> _checkAdminStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final idEmpleado = prefs.getString('id_empleado');
+      
+      if (idEmpleado != null) {
+        final roles = await supabaseClient
+            .from('t_empleado_rol')
+            .select('t_roles!inner(nombre)')
+            .eq('id_empleado', idEmpleado);
+        
+        final isAdmin = roles.any((rol) => 
+            rol['t_roles']['nombre']?.toString().toLowerCase() == 'admin');
+        
+        if (mounted) {
+          setState(() {
+            _isAdmin = isAdmin;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error al verificar rol de admin: $e');
+      if (mounted) {
+        setState(() {
+          _isAdmin = false;
+        });
+      }
+    }
   }
 
   @override
@@ -414,8 +446,8 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
         backgroundColor: const Color(0xFF003366),
         foregroundColor: Colors.white,
         actions: [
-          // Botón Agregar (verde como en la segunda imagen)
-          if (!_modoInventario)
+          // Botón Agregar (verde como en la segunda imagen) - Solo para admins
+          if (!_modoInventario && _isAdmin)
             Padding(
               padding: const EdgeInsets.only(right: 8.0),
               child: ElevatedButton.icon(
@@ -1196,13 +1228,15 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
               if (!_modoInventario)
                 Align(
                   alignment: Alignment.centerRight,
-                  child: IconButton(
-                    icon: const Icon(Icons.edit, size: 14),
-                    color: const Color(0xFF003366),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    onPressed: () => _editarEquipo(context, equipo),
-                  ),
+                  child: _isAdmin
+                      ? IconButton(
+                          icon: const Icon(Icons.edit, size: 14),
+                          color: const Color(0xFF003366),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          onPressed: () => _editarEquipo(context, equipo),
+                        )
+                      : const SizedBox.shrink(),
                 ),
             ],
           ),
@@ -1350,22 +1384,24 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
                 ),
               ),
               // Footer con botón de editar
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _editarEquipo(context, equipo);
-                  },
-                  icon: const Icon(Icons.edit),
-                  label: const Text('Editar Equipo'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF003366),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              // Botón Editar Equipo solo para admins
+              if (_isAdmin)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _editarEquipo(context, equipo);
+                    },
+                    icon: const Icon(Icons.edit),
+                    label: const Text('Editar Equipo'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF003366),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
@@ -1582,30 +1618,33 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF003366).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
+                  // Botones de editar y eliminar solo para admins
+                  if (_isAdmin) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF003366).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.edit, color: Color(0xFF003366), size: 20),
+                        tooltip: 'Editar equipo',
+                        onPressed: () => _editarEquipo(context, equipo),
+                      ),
                     ),
-                    child: IconButton(
-                      icon: const Icon(Icons.edit, color: Color(0xFF003366), size: 20),
-                      tooltip: 'Editar equipo',
-                      onPressed: () => _editarEquipo(context, equipo),
+                    const SizedBox(width: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                        tooltip: 'Eliminar equipo',
+                        onPressed: () => _eliminarEquipo(context, equipo),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red, size: 20),
-                      tooltip: 'Eliminar equipo',
-                      onPressed: () => _eliminarEquipo(context, equipo),
-                    ),
-                  ),
+                  ],
                 ],
               ),
         children: [
@@ -1727,19 +1766,22 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
                                 ),
                               ),
                             ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            icon: const Icon(Icons.edit, size: 18),
-                            color: const Color(0xFF003366),
-                            tooltip: 'Editar componente',
-                            onPressed: () => _mostrarEditarComponenteDialog(context, equipo, componente),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete, size: 18),
-                            color: Colors.red,
-                            tooltip: 'Eliminar componente',
-                            onPressed: () => _eliminarComponente(context, componente),
-                          ),
+                          // Botones de editar y eliminar componente solo para admins
+                          if (_isAdmin) ...[
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(Icons.edit, size: 18),
+                              color: const Color(0xFF003366),
+                              tooltip: 'Editar componente',
+                              onPressed: () => _mostrarEditarComponenteDialog(context, equipo, componente),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, size: 18),
+                              color: Colors.red,
+                              tooltip: 'Eliminar componente',
+                              onPressed: () => _eliminarComponente(context, componente),
+                            ),
+                          ],
                         ],
                       ),
                     );
@@ -1763,14 +1805,16 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
                           ),
                         ],
                       ),
-                      TextButton.icon(
-                        onPressed: () => _mostrarAgregarComponenteDialog(context, equipo),
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Agregar componente'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: const Color(0xFF003366),
+                      // Botón agregar componente solo para admins
+                      if (_isAdmin)
+                        TextButton.icon(
+                          onPressed: () => _mostrarAgregarComponenteDialog(context, equipo),
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Agregar componente'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF003366),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ],

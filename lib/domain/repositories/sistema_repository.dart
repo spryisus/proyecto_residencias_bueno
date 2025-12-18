@@ -1,5 +1,4 @@
 import '../entities/envio.dart';
-import '../entities/reporte.dart';
 import '../entities/empleado.dart';
 import '../entities/rol.dart';
 
@@ -13,15 +12,6 @@ abstract class EnvioRepository {
   Future<List<Envio>> getEnviosByEstatus(EnvioEstatus estatus);
   Future<List<Envio>> getEnviosByUbicacionOrigen(int idUbicacion);
   Future<List<Envio>> getEnviosByUbicacionDestino(int idUbicacion);
-}
-
-abstract class ReporteRepository {
-  Future<List<Reporte>> getAllReportes();
-  Future<Reporte?> getReporteById(int id);
-  Future<List<Reporte>> getReportesByEmpleado(String idEmpleado);
-  Future<List<Reporte>> getReportesByTipo(ReporteTipo tipo);
-  Future<Reporte> createReporte(Reporte reporte);
-  Future<void> deleteReporte(int id);
 }
 
 abstract class EmpleadoRepository {
