@@ -36,6 +36,9 @@ abstract class InventarioRepository {
   // Movimientos de inventario
   Future<void> ajustarInventario(int idProducto, int idUbicacion, int cantidadDelta, String motivo);
   Future<void> transferirInventario(int idProducto, int idUbicacionOrigen, int idUbicacionDestino, int cantidad);
+  
+  // Actualización directa de cantidad para jumpers (actualiza t_productos.unidad)
+  Future<void> actualizarCantidadJumper(int idProducto, int nuevaCantidad);
 
   // Estadísticas
   Future<Map<String, int>> getEstadisticasPorCategoria();

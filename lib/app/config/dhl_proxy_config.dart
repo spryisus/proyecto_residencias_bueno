@@ -20,7 +20,7 @@ class DHLProxyConfig {
   static const String productionUrl = 'https://dhl-tracking-proxy.onrender.com';
   
   /// URL local para desarrollo (Puppeteer local)
-  static const String localUrl = 'http://10.12.18.188:3000';
+  static const String localUrl = 'http://10.12.18.190:3000';
   
   /// URL para emulador Android (Puppeteer)
   static const String androidEmulatorUrl = 'http://10.0.2.2:3000';
@@ -35,7 +35,7 @@ class DHLProxyConfig {
   static const String fastApiWebDesktop = 'http://localhost:8000';
   static const String fastApiAndroidEmu = 'http://10.0.2.2:8000';
   /// Para dispositivo físico, actualiza con la IP LAN de tu PC corriendo FastAPI
-  static const String fastApiLanDevice = 'http://10.12.18.188:8000';
+  static const String fastApiLanDevice = 'http://10.12.18.190:8000';
   
   // ============================================
   // MÉTODOS PARA OBTENER LA URL CORRECTA

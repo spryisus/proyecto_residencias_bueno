@@ -188,6 +188,11 @@ class InventarioRepositoryImpl implements InventarioRepository {
   }
 
   @override
+  Future<void> actualizarCantidadJumper(int idProducto, int nuevaCantidad) async {
+    await dataSource.actualizarCantidadJumper(idProducto, nuevaCantidad);
+  }
+
+  @override
   Future<Map<String, int>> getEstadisticasPorCategoria() async {
     final inventario = await getAllInventario();
     final stats = <String, int>{};

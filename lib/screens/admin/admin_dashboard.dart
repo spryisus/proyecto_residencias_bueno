@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/di/injection_container.dart';
 import '../../data/local/inventory_session_storage.dart';
 import '../../domain/entities/inventory_session.dart';
+import '../../domain/repositories/inventario_repository.dart';
 import '../settings/settings_screen.dart';
 import 'reports_screen.dart';
 import '../auth/login_screen.dart';
@@ -582,7 +583,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
 }
 
 
-class _SessionDetailDialog extends StatelessWidget {
+class _SessionDetailDialog extends StatefulWidget {
   final InventorySession session;
   final String Function(DateTime) formatDate;
 
@@ -590,6 +591,64 @@ class _SessionDetailDialog extends StatelessWidget {
     required this.session,
     required this.formatDate,
   });
+
+  @override
+  State<_SessionDetailDialog> createState() => _SessionDetailDialogState();
+}
+
+class _SessionDetailDialogState extends State<_SessionDetailDialog> {
+  final InventarioRepository _inventarioRepository = serviceLocator.get<InventarioRepository>();
+  Map<int, String> _productNames = {};
+  bool _isLoadingNames = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProductNames();
+  }
+
+  Future<void> _loadProductNames() async {
+    try {
+      final Map<int, String> names = {};
+      
+      // Cargar nombres y tamaños de todos los productos en la sesión
+      for (final productId in widget.session.quantities.keys) {
+        try {
+          final producto = await _inventarioRepository.getProductoById(productId);
+          if (producto != null) {
+            // Formatear nombre con tamaño si está disponible
+            String displayName = producto.nombre;
+            if (producto.tamano != null) {
+              displayName = '$displayName - ${producto.tamano} m';
+            }
+            names[productId] = displayName;
+          } else {
+            names[productId] = 'Producto ID #$productId (no encontrado)';
+          }
+        } catch (e) {
+          names[productId] = 'Producto ID #$productId (error al cargar)';
+        }
+      }
+      
+      if (mounted) {
+        setState(() {
+          _productNames = names;
+          _isLoadingNames = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingNames = false;
+          // Si falla, usar IDs como fallback
+          _productNames = {
+            for (final id in widget.session.quantities.keys)
+              id: 'Producto ID #$id'
+          };
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -601,39 +660,42 @@ class _SessionDetailDialog extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildInfoRow('Categoría', session.categoryName, context),
+            _buildInfoRow('Categoría', widget.session.categoryName, context),
             const SizedBox(height: 8),
-            _buildInfoRow('Estado', session.status == InventorySessionStatus.pending ? 'Pendiente' : 'Terminado', context),
+            _buildInfoRow('Estado', widget.session.status == InventorySessionStatus.pending ? 'Pendiente' : 'Terminado', context),
             const SizedBox(height: 8),
-            _buildInfoRow('Última actualización', formatDate(session.updatedAt), context),
+            _buildInfoRow('Última actualización', widget.formatDate(widget.session.updatedAt), context),
             const SizedBox(height: 8),
-            if (session.ownerEmail != null && session.ownerEmail!.isNotEmpty)
-              _buildInfoRow('Empleado', session.ownerEmail!, context),
-            if (session.ownerName != null && session.ownerName != session.ownerEmail)
-              _buildInfoRow('Responsable', session.ownerName!, context),
+            if (widget.session.ownerEmail != null && widget.session.ownerEmail!.isNotEmpty)
+              _buildInfoRow('Empleado', widget.session.ownerEmail!, context),
+            if (widget.session.ownerName != null && widget.session.ownerName != widget.session.ownerEmail)
+              _buildInfoRow('Responsable', widget.session.ownerName!, context),
             const SizedBox(height: 16),
             Text(
-              'Productos capturados (${session.quantities.length})',
+              'Productos capturados (${widget.session.quantities.length})',
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
             SizedBox(
               height: 200,
-              child: ListView(
-                children: session.quantities.entries.map((entry) {
-                  return ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text('Producto ID #${entry.key}'),
-                    trailing: Text(
-                      '${entry.value}',
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
+              child: _isLoadingNames
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView(
+                      children: widget.session.quantities.entries.map((entry) {
+                        final productName = _productNames[entry.key] ?? 'Producto ID #${entry.key}';
+                        return ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(productName),
+                          trailing: Text(
+                            '${entry.value}',
+                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
                           ),
+                        );
+                      }).toList(),
                     ),
-                  );
-                }).toList(),
-              ),
             ),
           ],
         ),

@@ -58,7 +58,13 @@ echo -e "${GREEN}✅ Entorno virtual activado: $VIRTUAL_ENV${NC}"
 
 # Actualizar pip primero
 echo -e "${BLUE}📦 Actualizando pip...${NC}"
-python -m pip install --upgrade pip --quiet
+# Usar el Python del entorno virtual directamente (ruta relativa al directorio del script)
+PYTHON_CMD="${SCRIPT_DIR}/venv/bin/python"
+if [ ! -f "$PYTHON_CMD" ]; then
+    echo -e "${RED}❌ Error: No se encontró Python en el entorno virtual en ${PYTHON_CMD}${NC}"
+    exit 1
+fi
+$PYTHON_CMD -m pip install --upgrade pip --quiet
 
 # Instalar dependencias si es necesario
 if [ ! -f "venv/.dependencies_installed" ]; then
@@ -88,7 +94,8 @@ echo ""
 # --reload: Activa el hot reload automático
 # --reload-dir: Especifica directorios adicionales a monitorear (opcional, por defecto monitorea el directorio actual)
 # --reload-include: Incluye archivos específicos para monitorear
-python -m uvicorn main:app \
+# Usar el Python del entorno virtual directamente
+$PYTHON_CMD -m uvicorn main:app \
     --host 0.0.0.0 \
     --port 8001 \
     --reload \

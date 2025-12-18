@@ -67,11 +67,18 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
       // Obtener inventario por categoría
       final inventario = await _inventarioRepository.getInventarioByCategoria(widget.categoria.idCategoria);
       
+      // Debug: verificar cuántos items se obtuvieron
+      debugPrint('📦 Inventario cargado: ${inventario.length} items');
+      if (inventario.isNotEmpty) {
+        debugPrint('📦 Primer item: ${inventario.first.producto.nombre}');
+      }
+      
       setState(() {
         _items = inventario;
         _isLoading = false;
       });
     } catch (e) {
+      debugPrint('❌ Error al cargar inventario: $e');
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -140,19 +147,48 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
     try {
       int itemsActualizados = 0;
       
+      // Detectar si es un inventario de jumpers
+      final esJumper = widget.categoriaNombre.toLowerCase().contains('jumper') ||
+                       widget.jumperCategoryFilter != null;
+      
       for (var entry in inventarioData.entries) {
         final item = entry.key;
         final nuevaCantidad = entry.value;
-        final diferencia = nuevaCantidad - item.cantidad;
+        final cantidadActual = item.cantidad;
+        final diferencia = nuevaCantidad - cantidadActual;
         
-        if (diferencia != 0) {
-          await _inventarioRepository.ajustarInventario(
-            item.producto.idProducto,
-            item.ubicacion.idUbicacion,
-            diferencia,
-            'Inventario completo de ${widget.categoriaNombre} - Conteo físico',
-          );
-          itemsActualizados++;
+        // Actualizar siempre que haya una diferencia
+        // Para jumpers, siempre actualizar si la cantidad nueva es diferente
+        if (nuevaCantidad != cantidadActual) {
+          try {
+            if (esJumper) {
+              // Para jumpers, actualizar directamente t_productos.unidad
+              await _inventarioRepository.actualizarCantidadJumper(
+                item.producto.idProducto,
+                nuevaCantidad,
+              );
+              
+              // También crear el movimiento para mantener el historial
+              await _inventarioRepository.ajustarInventario(
+                item.producto.idProducto,
+                item.ubicacion.idUbicacion,
+                diferencia,
+                'Inventario completo de ${widget.categoriaNombre} - Conteo físico',
+              );
+            } else {
+              // Para otros productos, usar el método estándar
+              await _inventarioRepository.ajustarInventario(
+                item.producto.idProducto,
+                item.ubicacion.idUbicacion,
+                diferencia,
+                'Inventario completo de ${widget.categoriaNombre} - Conteo físico',
+              );
+            }
+            itemsActualizados++;
+          } catch (e) {
+            debugPrint('Error al actualizar item ${item.producto.idProducto}: $e');
+            // Continuar con el siguiente item en lugar de fallar completamente
+          }
         }
       }
       
@@ -179,9 +215,17 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
       }
       
       // Guardar como completado y recargar inventario
+      // Primero guardar la sesión
       final sessionData = _quantitiesFromData(inventarioData);
       await _saveSessionProgress(sessionData, InventorySessionStatus.completed);
+      
+      // Recargar el inventario para reflejar los cambios
+      // Agregar un pequeño delay para asegurar que la BD se actualice
+      await Future.delayed(const Duration(milliseconds: 300));
       await _loadInventory();
+      
+      // También recargar la sesión pendiente para limpiar cualquier estado
+      await _loadPendingSession();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -579,7 +623,12 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
                           final item = _filteredItems.firstWhere(
                             (item) => item.producto.idProducto == productId,
                           );
-                          inventarioData[item] = nuevaCantidad;
+                          
+                          // Solo agregar al inventarioData si la cantidad es diferente a la actual
+                          // Esto asegura que solo se actualicen los items que realmente cambiaron
+                          if (nuevaCantidad != item.cantidad) {
+                            inventarioData[item] = nuevaCantidad;
+                          }
                         }
                         
                         if (hayErrores) {
@@ -1466,7 +1515,12 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          _loadInventory();
+          
+          // Agregar un pequeño delay para asegurar que la BD se actualice
+          await Future.delayed(const Duration(milliseconds: 300));
+          
+          // Recargar el inventario
+          await _loadInventory();
         }
       } catch (e) {
         if (mounted) {

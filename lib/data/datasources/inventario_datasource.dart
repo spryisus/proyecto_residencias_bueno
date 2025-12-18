@@ -36,6 +36,9 @@ abstract class InventarioDataSource {
 
   // Movimientos
   Future<void> crearMovimientoInventario(MovimientoInventario movimiento);
+  
+  // Actualización directa de cantidad para jumpers
+  Future<void> actualizarCantidadJumper(int idProducto, int nuevaCantidad);
 }
 
 class SupabaseInventarioDataSource implements InventarioDataSource {
@@ -668,6 +671,19 @@ class SupabaseInventarioDataSource implements InventarioDataSource {
           .insert(movimiento.toJsonForInsert());
     } catch (e) {
       throw Exception('Error al crear movimiento de inventario: $e');
+    }
+  }
+
+  @override
+  Future<void> actualizarCantidadJumper(int idProducto, int nuevaCantidad) async {
+    try {
+      // Actualizar directamente el campo unidad en t_productos
+      await supabaseClient
+          .from('t_productos')
+          .update({'unidad': nuevaCantidad.toString()})
+          .eq('id_producto', idProducto);
+    } catch (e) {
+      throw Exception('Error al actualizar cantidad de jumper: $e');
     }
   }
 }
