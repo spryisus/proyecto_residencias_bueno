@@ -48,3 +48,5 @@ echo -e "${YELLOW}💡 Recuerda recompilar la aplicación si es necesario:${NC}"
 echo -e "   flutter build web --release"
 
 
+
+

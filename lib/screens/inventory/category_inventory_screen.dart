@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/entities/inventario_completo.dart';
@@ -49,12 +51,36 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
   String _searchQuery = '';
   InventorySession? _pendingSession;
   SortOrder _sortOrder = SortOrder.none;
+  Timer? _refreshTimer;
+  bool _isEditing = false; // Para evitar recargas durante edición
 
   @override
   void initState() {
     super.initState();
     _loadInventory();
     _loadPendingSession();
+    // Iniciar actualización automática cada 5 segundos (solo en web)
+    if (kIsWeb) {
+      _startAutoRefresh();
+    }
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startAutoRefresh() {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (mounted) {
+        _loadPendingSession();
+        // Solo recargar inventario si no está en modo de edición
+        if (!_isEditing) {
+          _loadInventory();
+        }
+      }
+    });
   }
 
   Future<void> _loadInventory() async {
@@ -297,6 +323,7 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
       );
     }
 
+    final isMobile = MediaQuery.of(context).size.width < 600;
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -306,9 +333,9 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
               borderRadius: BorderRadius.circular(16),
             ),
             child: Container(
-            width: MediaQuery.of(context).size.width * 0.9,
-            height: MediaQuery.of(context).size.height * 0.8,
-            padding: const EdgeInsets.all(20),
+            width: isMobile ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.9,
+            height: isMobile ? MediaQuery.of(context).size.height * 0.9 : MediaQuery.of(context).size.height * 0.8,
+            padding: EdgeInsets.all(isMobile ? 12 : 20),
             child: Column(
               children: [
                 // Header
@@ -319,10 +346,10 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
                     Expanded(
                       child: Text(
                         'Realizar Inventario Completo',
-                        style: const TextStyle(
-                          fontSize: 22,
+                        style: TextStyle(
+                          fontSize: isMobile ? 18 : 22,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF003366),
+                          color: const Color(0xFF003366),
                         ),
                       ),
                     ),
@@ -571,28 +598,44 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
                 
                 // Botones de acción
                 Wrap(
-                  alignment: WrapAlignment.end,
+                  alignment: isMobile ? WrapAlignment.center : WrapAlignment.end,
                   spacing: 12,
                   runSpacing: 8,
                   children: [
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                      },
-                      child: const Text(
-                        'Cancelar',
-                        style: TextStyle(color: Colors.grey, fontSize: 16),
+                    SizedBox(
+                      width: isMobile ? double.infinity : null,
+                      child: TextButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                        },
+                        child: Text(
+                          'Cancelar',
+                          style: TextStyle(color: Colors.grey, fontSize: isMobile ? 14 : 16),
+                        ),
                       ),
                     ),
-                    OutlinedButton.icon(
+                    SizedBox(
+                      width: isMobile ? double.infinity : null,
+                      child:                     OutlinedButton.icon(
                       onPressed: () async {
-                        final quantities = _quantitiesFromControllers(controllers);
+                        // Crear un mapa con TODOS los items, no solo los modificados
+                        final Map<int, int> allQuantities = {};
+                        for (var entry in controllers.entries) {
+                          final productId = entry.key;
+                          final controller = entry.value;
+                          final nuevaCantidad = int.tryParse(controller.text);
+                          if (nuevaCantidad != null && nuevaCantidad >= 0) {
+                            allQuantities[productId] = nuevaCantidad;
+                          }
+                        }
                         await _saveSessionProgress(
-                          quantities,
+                          allQuantities,
                           InventorySessionStatus.pending,
                         );
                         if (!mounted) return;
                         Navigator.pop(context);
+                        // Recargar la sesión pendiente para actualizar la UI
+                        await _loadPendingSession();
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text('Inventario guardado como pendiente'),
@@ -600,11 +643,14 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
                           ),
                         );
                       },
-                      icon: const Icon(Icons.pause_circle_outline),
-                      label: const Text('Terminar más tarde'),
+                        icon: Icon(Icons.pause_circle_outline, size: isMobile ? 18 : 20),
+                        label: Text('Terminar más tarde', style: TextStyle(fontSize: isMobile ? 14 : 16)),
+                      ),
                     ),
-                    ElevatedButton.icon(
-                      onPressed: () async {
+                    SizedBox(
+                      width: isMobile ? double.infinity : null,
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
                         // Validar que todas las cantidades sean válidas
                         final Map<InventarioCompleto, int> inventarioData = {};
                         bool hayErrores = false;
@@ -644,20 +690,21 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
                         Navigator.pop(context);
                         await _performCompleteInventory(inventarioData);
                       },
-                      icon: const Icon(Icons.save, color: Colors.white),
-                      label: const Text(
-                        'Guardar Todo',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                        icon: Icon(Icons.save, color: Colors.white, size: isMobile ? 18 : 20),
+                        label: Text(
+                          'Guardar Todo',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: isMobile ? 14 : 16,
+                          ),
                         ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF003366),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 12,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF003366),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isMobile ? 16 : 24,
+                            vertical: isMobile ? 10 : 12,
+                          ),
                         ),
                       ),
                     ),
@@ -1081,30 +1128,21 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
       categoryName = '${widget.categoria.nombre} ${widget.jumperCategoryFilter!.displayName}';
     }
 
-    // Si el status es completed, incluir TODOS los items de la categoría
+    // Incluir TODOS los items de la categoría tanto para completados como para pendientes
     // Para los items que no están en quantities, usar su cantidad original
-    Map<int, int> finalQuantities = quantities;
-    if (status == InventorySessionStatus.completed) {
-      // Crear un mapa completo con TODOS los items de la categoría
-      finalQuantities = <int, int>{};
-      
-      // Primero agregar todos los items de _filteredItems con su cantidad original
-      for (var item in _filteredItems) {
-        final productId = item.producto.idProducto;
-        // Si el item está en quantities (fue modificado), usar esa cantidad
-        // Si no, usar la cantidad original
-        finalQuantities[productId] = quantities[productId] ?? item.cantidad;
-      }
-      
-      // Si quantities está vacío, no hacer nada más
-      if (finalQuantities.isEmpty) {
-        return;
-      }
-    } else {
-      // Para sesiones pendientes, mantener el comportamiento original
-      if (quantities.isEmpty) {
-        return;
-      }
+    Map<int, int> finalQuantities = <int, int>{};
+    
+    // Agregar todos los items de _filteredItems
+    for (var item in _filteredItems) {
+      final productId = item.producto.idProducto;
+      // Si el item está en quantities (fue modificado), usar esa cantidad
+      // Si no, usar la cantidad original
+      finalQuantities[productId] = quantities[productId] ?? item.cantidad;
+    }
+    
+    // Si no hay items, no hacer nada
+    if (finalQuantities.isEmpty) {
+      return;
     }
 
     // Determinar el ID de la sesión:
@@ -1152,6 +1190,17 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
     setState(() {
       _pendingSession = status == InventorySessionStatus.pending ? session : null;
     });
+    
+    // Si es una sesión pendiente, forzar la reconstrucción de los widgets
+    // para que los badges se actualicen inmediatamente
+    if (status == InventorySessionStatus.pending) {
+      // Pequeño delay para asegurar que el estado se actualice
+      Future.microtask(() {
+        if (mounted) {
+          setState(() {});
+        }
+      });
+    }
   }
 
   Map<int, int> _quantitiesFromControllers(
@@ -1395,10 +1444,12 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
     final rackController = TextEditingController();
     final contenedorController = TextEditingController();
 
+    final isMobile = MediaQuery.of(context).size.width < 600;
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Agregar Producto'),
+        title: Text('Agregar Producto', style: TextStyle(fontSize: isMobile ? 18 : 20)),
+        contentPadding: EdgeInsets.all(isMobile ? 16 : 24),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1457,22 +1508,57 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (nombreController.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('El nombre es obligatorio')),
-                );
-                return;
-              }
-              Navigator.pop(context, true);
-            },
-            child: const Text('Agregar'),
-          ),
+          if (isMobile)
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      if (nombreController.text.trim().isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('El nombre es obligatorio')),
+                        );
+                        return;
+                      }
+                      Navigator.pop(context, true);
+                    },
+                    child: const Text('Agregar'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancelar'),
+                  ),
+                ),
+              ],
+            )
+          else
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (nombreController.text.trim().isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('El nombre es obligatorio')),
+                      );
+                      return;
+                    }
+                    Navigator.pop(context, true);
+                  },
+                  child: const Text('Agregar'),
+                ),
+              ],
+            ),
         ],
       ),
     );

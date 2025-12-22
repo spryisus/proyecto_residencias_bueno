@@ -808,59 +808,71 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
                 ),
               ],
             ),
-            child: Row(
-              children: [
-                if (_modoInventario) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.green[50],
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.green[200]!),
-                    ),
-                    child: Row(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isMobile = constraints.maxWidth < 600;
+                if (_modoInventario) {
+                  if (isMobile) {
+                    // Layout móvil: columna vertical
+                    return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.check_circle, color: Colors.green, size: 18),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Completados: ${_equiposCompletados.length}',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green,
-                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.green[50],
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: Colors.green[200]!),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.check_circle, color: Colors.green, size: 16),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Completados: ${_equiposCompletados.length}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.orange[50],
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: Colors.orange[200]!),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.pending, color: Colors.orange, size: 16),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Faltantes: ${_calcularFaltantes()}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.orange,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.orange[50],
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.orange[200]!),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.pending, color: Colors.orange, size: 18),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Faltantes: ${_calcularFaltantes()}',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orange,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Spacer(),
-                  // Botón "Terminar más tarde"
-                  ElevatedButton.icon(
+                        const SizedBox(height: 12),
+                        // Botones en columna para móvil
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
                     onPressed: () async {
                       // Guardar messenger ANTES del await (SOLUCIÓN 2)
                       if (!mounted || _scaffoldMessengerKey.currentState == null) return;
@@ -879,18 +891,21 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
                         });
                       }
                     },
-                    icon: const Icon(Icons.pause_circle_outline, size: 18),
-                    label: const Text('Terminar más tarde'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange[50],
-                      foregroundColor: Colors.orange[700],
-                      elevation: 0,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Botón "Finalizar inventario"
-                  ElevatedButton.icon(
-                    onPressed: () async {
+                            icon: const Icon(Icons.pause_circle_outline, size: 18),
+                            label: const Text('Terminar más tarde'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange[50],
+                              foregroundColor: Colors.orange[700],
+                              elevation: 0,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        // Botón "Finalizar inventario"
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
                       if (_equiposCompletados.isEmpty) {
                         if (mounted && _scaffoldMessengerKey.currentState != null) {
                           _scaffoldMessengerKey.currentState!.showSnackBar(
@@ -904,28 +919,62 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
                         return;
                       }
                       
+                      final isMobile = MediaQuery.of(context).size.width < 600;
                       final confirmar = await showDialog<bool>(
                         context: context,
                         builder: (context) => AlertDialog(
-                          title: const Text('Finalizar Inventario'),
+                          title: Text('Finalizar Inventario', style: TextStyle(fontSize: isMobile ? 18 : 20)),
+                          contentPadding: EdgeInsets.all(isMobile ? 16 : 24),
                           content: Text(
                             '¿Estás seguro de que deseas finalizar el inventario?\n\n'
                             'Completados: ${_equiposCompletados.length}\n'
                             'Faltantes: ${_calcularFaltantes()}',
+                            style: TextStyle(fontSize: isMobile ? 14 : 16),
                           ),
                           actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: const Text('Cancelar'),
-                            ),
-                            ElevatedButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
-                                foregroundColor: Colors.white,
+                            if (isMobile)
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton(
+                                      onPressed: () => Navigator.pop(context, true),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.green,
+                                        foregroundColor: Colors.white,
+                                      ),
+                                      child: const Text('Finalizar'),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: TextButton(
+                                      onPressed: () => Navigator.pop(context, false),
+                                      child: const Text('Cancelar'),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            else
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, false),
+                                    child: const Text('Cancelar'),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () => Navigator.pop(context, true),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.green,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    child: const Text('Finalizar'),
+                                  ),
+                                ],
                               ),
-                              child: const Text('Finalizar'),
-                            ),
                           ],
                         ),
                       );
@@ -954,31 +1003,245 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
                     },
                     icon: const Icon(Icons.check_circle, size: 18),
                     label: const Text('Finalizar inventario'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Botón "Cancelar"
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _modoInventario = false;
-                        _equiposCompletados.clear();
-                      });
-                    },
-                    icon: const Icon(Icons.close, size: 18),
-                    label: const Text('Cancelar'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red[50],
-                      foregroundColor: Colors.red[700],
-                      elevation: 0,
-                    ),
-                  ),
-                ] else ...[
-                  Row(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            // Botón "Cancelar"
+                            onPressed: () {
+                              setState(() {
+                                _modoInventario = false;
+                                _equiposCompletados.clear();
+                              });
+                            },
+                            icon: const Icon(Icons.close, size: 18),
+                            label: const Text('Cancelar'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red[50],
+                              foregroundColor: Colors.red[700],
+                              elevation: 0,
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  } else {
+                    // Layout desktop cuando está en modo inventario: fila horizontal
+                    return Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.green[50],
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.green[200]!),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.check_circle, color: Colors.green, size: 18),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Completados: ${_equiposCompletados.length}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.orange[50],
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.orange[200]!),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.pending, color: Colors.orange, size: 18),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Faltantes: ${_calcularFaltantes()}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Spacer(),
+                      // Botón "Terminar más tarde"
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          // Guardar messenger ANTES del await (SOLUCIÓN 2)
+                          if (!mounted || _scaffoldMessengerKey.currentState == null) return;
+                          
+                          await _guardarProgresoInventario();
+                          if (mounted && _scaffoldMessengerKey.currentState != null) {
+                            _scaffoldMessengerKey.currentState!.showSnackBar(
+                              const SnackBar(
+                                content: Text('Progreso del inventario guardado. Puedes continuar más tarde.'),
+                                backgroundColor: Colors.blue,
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                            setState(() {
+                              _modoInventario = false;
+                            });
+                          }
+                        },
+                        icon: const Icon(Icons.pause_circle_outline, size: 18),
+                        label: const Text('Terminar más tarde'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange[50],
+                          foregroundColor: Colors.orange[700],
+                          elevation: 0,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Botón "Finalizar inventario"
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          if (_equiposCompletados.isEmpty) {
+                            if (mounted && _scaffoldMessengerKey.currentState != null) {
+                              _scaffoldMessengerKey.currentState!.showSnackBar(
+                                const SnackBar(
+                                  content: Text('Debes completar al menos un equipo para finalizar el inventario.'),
+                                  backgroundColor: Colors.orange,
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                          
+                          final isMobile = MediaQuery.of(context).size.width < 600;
+                          final confirmar = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: Text('Finalizar Inventario', style: TextStyle(fontSize: isMobile ? 18 : 20)),
+                              contentPadding: EdgeInsets.all(isMobile ? 16 : 24),
+                              content: Text(
+                                '¿Estás seguro de que deseas finalizar el inventario?\n\n'
+                                'Completados: ${_equiposCompletados.length}\n'
+                                'Faltantes: ${_calcularFaltantes()}',
+                                style: TextStyle(fontSize: isMobile ? 14 : 16),
+                              ),
+                              actions: [
+                                if (isMobile)
+                                  Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton(
+                                          onPressed: () => Navigator.pop(context, true),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.green,
+                                            foregroundColor: Colors.white,
+                                          ),
+                                          child: const Text('Finalizar'),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: TextButton(
+                                          onPressed: () => Navigator.pop(context, false),
+                                          child: const Text('Cancelar'),
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                else
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context, false),
+                                        child: const Text('Cancelar'),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () => Navigator.pop(context, true),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.green,
+                                          foregroundColor: Colors.white,
+                                        ),
+                                        child: const Text('Finalizar'),
+                                      ),
+                                    ],
+                                  ),
+                              ],
+                            ),
+                          );
+                          
+                          if (confirmar == true && mounted) {
+                            // Usar GlobalKey en lugar de context (SOLUCIÓN DEFINITIVA)
+                            if (!mounted || _scaffoldMessengerKey.currentState == null) return;
+                            
+                            await _finalizarInventario();
+                            if (mounted && _scaffoldMessengerKey.currentState != null) {
+                              _scaffoldMessengerKey.currentState!.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Inventario finalizado. ${_equiposCompletados.length} equipo(s) completado(s).',
+                                  ),
+                                  backgroundColor: Colors.green,
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                              setState(() {
+                                _modoInventario = false;
+                                _equiposCompletados.clear();
+                              });
+                            }
+                          }
+                        },
+                        icon: const Icon(Icons.check_circle, size: 18),
+                        label: const Text('Finalizar inventario'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Botón "Cancelar"
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _modoInventario = false;
+                            _equiposCompletados.clear();
+                          });
+                        },
+                        icon: const Icon(Icons.close, size: 18),
+                        label: const Text('Cancelar'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red[50],
+                          foregroundColor: Colors.red[700],
+                          elevation: 0,
+                        ),
+                      ),
+                    ],
+                  );
+                  }
+                } else {
+                  // Cuando no está en modo inventario, mostrar información normal
+                  return Row(
                     children: [
                       const Icon(Icons.computer, color: Color(0xFF003366), size: 20),
                       const SizedBox(width: 8),
@@ -990,19 +1253,19 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
                           color: Color(0xFF003366),
                         ),
                       ),
+                      const Spacer(),
+                      if (_searchQuery.isNotEmpty)
+                        Text(
+                          'Filtrados: ${_equiposFiltrados.length} de ${_equipos.length}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
                     ],
-                  ),
-                  const Spacer(),
-                  if (_searchQuery.isNotEmpty)
-                    Text(
-                      'Filtrados: ${_equiposFiltrados.length} de ${_equipos.length}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                ],
-              ],
+                  );
+                }
+              },
             ),
           ),
 
@@ -1412,6 +1675,7 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
   Widget _buildEquipoCard(BuildContext context, Map<String, dynamic> equipo, List<dynamic> componentes) {
     final empleadoAsignado = (equipo['empleado_asignado_nombre']?.toString() ?? equipo['empleado_asignado']?.toString() ?? '').trim();
     final inventario = (equipo['inventario']?.toString() ?? '').trim();
+    final isMobile = MediaQuery.of(context).size.width < 600;
     
     final estaCompletado = inventario.isNotEmpty && _equiposCompletados.contains(inventario);
     
@@ -1454,199 +1718,287 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
                   child: const Icon(Icons.computer, color: Color(0xFF003366), size: 28),
                 ),
         ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              equipo['inventario'] ?? 'Sin inventario',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF003366),
-              ),
-            ),
-            // Usuario Final destacado - más visible
-            if (empleadoAsignado.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.blue[400]!, Colors.blue[600]!],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.blue.withOpacity(0.3),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+        title: isMobile
+            ? Text(
+                equipo['inventario'] ?? 'Sin inventario',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF003366),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    equipo['inventario'] ?? 'Sin inventario',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF003366),
+                    ),
+                  ),
+                  // Usuario Final destacado - más visible
+                  if (empleadoAsignado.isNotEmpty) ...[
+                    const SizedBox(height: 8),
                     Container(
-                      padding: const EdgeInsets.all(6),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.person_pin_circle, size: 18, color: Colors.white),
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        'Usuario Final: $empleadoAsignado',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                        gradient: LinearGradient(
+                          colors: [Colors.blue[400]!, Colors.blue[600]!],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
-                        overflow: TextOverflow.ellipsis,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.blue.withOpacity(0.3),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.person_pin_circle, size: 18, color: Colors.white),
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              'Usuario Final: $empleadoAsignado',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
-                ),
-              ),
-            ],
-          ],
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 6),
-            if (equipo['marca'] != null || equipo['modelo'] != null)
-              Row(
-                children: [
-                  Icon(Icons.branding_watermark, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${equipo['marca'] ?? ''} ${equipo['modelo'] ?? ''}'.trim(),
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[700],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
                 ],
               ),
-            if (equipo['numero_serie'] != null) ...[
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(Icons.qr_code, size: 14, color: Colors.grey[500]),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Serie: ${equipo['numero_serie']}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-        trailing: _modoInventario
-            ? (estaCompletado
-                ? Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.green,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.check_circle, color: Colors.white, size: 16),
-                        SizedBox(width: 4),
-                        Text(
-                          'Completo',
+        subtitle: isMobile
+            ? (empleadoAsignado.isNotEmpty
+                ? Row(
+                    children: [
+                      Icon(Icons.person, size: 12, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          empleadoAsignado,
                           style: TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                            color: Colors.grey[700],
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  )
+                : (equipo['direccion_fisica'] != null || equipo['ubicacion_fisica'] != null)
+                    ? Row(
+                        children: [
+                          Icon(Icons.location_on, size: 12, color: Colors.grey[600]),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              equipo['direccion_fisica'] ?? equipo['ubicacion_fisica'] ?? '',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      )
+                    : null)
+            : (equipo['marca'] != null || equipo['modelo'] != null || equipo['numero_serie'] != null)
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (equipo['marca'] != null || equipo['modelo'] != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Row(
+                            children: [
+                              Icon(Icons.branding_watermark, size: 16, color: Colors.grey[600]),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  '${equipo['marca'] ?? ''} ${equipo['modelo'] ?? ''}'.trim(),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey[700],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
+                      if (equipo['numero_serie'] != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Row(
+                            children: [
+                              Icon(Icons.qr_code, size: 14, color: Colors.grey[500]),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  'Serie: ${equipo['numero_serie']}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  )
+                : null,
+        trailing: _modoInventario
+            ? (estaCompletado
+                ? ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 100),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.check_circle, color: Colors.white, size: 16),
+                          SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              'Completo',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   )
                 : const SizedBox.shrink())
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(equipo['status']),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _getStatusColor(equipo['status']).withOpacity(0.3),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
+            : isMobile
+                ? (_isAdmin
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Color(0xFF003366), size: 20),
+                            tooltip: 'Editar equipo',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                            onPressed: () => _editarEquipo(context, equipo),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                            tooltip: 'Eliminar equipo',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                            onPressed: () => _eliminarEquipo(context, equipo),
+                          ),
+                        ],
+                      )
+                    : null)
+                : ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 200),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          _getStatusIcon(equipo['status']),
-                          size: 14,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 4),
                         Flexible(
-                          child: Text(
-                            (equipo['empleado_asignado_nombre']?.toString() ?? equipo['status'] ?? 'N/A').trim().isEmpty 
-                              ? (equipo['status'] ?? 'N/A')
-                              : (equipo['empleado_asignado_nombre']?.toString() ?? equipo['status'] ?? 'N/A'),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: _getStatusColor(equipo['status']),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: _getStatusColor(equipo['status']).withOpacity(0.3),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _getStatusIcon(equipo['status']),
+                                  size: 14,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    (equipo['empleado_asignado_nombre']?.toString() ?? equipo['status'] ?? 'N/A').trim().isEmpty 
+                                      ? (equipo['status'] ?? 'N/A')
+                                      : (equipo['empleado_asignado_nombre']?.toString() ?? equipo['status'] ?? 'N/A'),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
+                        // Botones de editar y eliminar solo para admins
+                        if (_isAdmin) ...[
+                          const SizedBox(width: 4),
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Color(0xFF003366), size: 20),
+                            tooltip: 'Editar equipo',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () => _editarEquipo(context, equipo),
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                            tooltip: 'Eliminar equipo',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () => _eliminarEquipo(context, equipo),
+                          ),
+                        ],
                       ],
                     ),
                   ),
-                  // Botones de editar y eliminar solo para admins
-                  if (_isAdmin) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF003366).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: IconButton(
-                        icon: const Icon(Icons.edit, color: Color(0xFF003366), size: 20),
-                        tooltip: 'Editar equipo',
-                        onPressed: () => _editarEquipo(context, equipo),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red, size: 20),
-                        tooltip: 'Eliminar equipo',
-                        onPressed: () => _eliminarEquipo(context, equipo),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
         children: [
           Padding(
             padding: const EdgeInsets.all(16.0),
@@ -1786,33 +2138,56 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
                       ),
                     );
                   }).toList(),
+                  // Botón para agregar más componentes (siempre visible si es admin)
+                  if (_isAdmin) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton.icon(
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Agregar componente'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF003366),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        onPressed: () => _mostrarAgregarComponenteDialog(context, equipo),
+                      ),
+                    ),
+                  ],
                 ] else ...[
                   const Divider(height: 32),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.extension, color: Colors.grey, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Sin componentes registrados',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[600],
-                              fontStyle: FontStyle.italic,
+                      Flexible(
+                        child: Row(
+                          children: [
+                            const Icon(Icons.extension, color: Colors.grey, size: 20),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                'Sin componentes registrados',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[600],
+                                  fontStyle: FontStyle.italic,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                       // Botón agregar componente solo para admins
                       if (_isAdmin)
-                        TextButton.icon(
-                          onPressed: () => _mostrarAgregarComponenteDialog(context, equipo),
-                          icon: const Icon(Icons.add, size: 18),
-                          label: const Text('Agregar componente'),
-                          style: TextButton.styleFrom(
-                            foregroundColor: const Color(0xFF003366),
+                        Flexible(
+                          child: TextButton.icon(
+                            onPressed: () => _mostrarAgregarComponenteDialog(context, equipo),
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('Agregar componente'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFF003366),
+                            ),
                           ),
                         ),
                     ],
