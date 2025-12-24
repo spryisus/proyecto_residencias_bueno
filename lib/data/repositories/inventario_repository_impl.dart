@@ -3,6 +3,7 @@ import '../../domain/entities/categoria.dart';
 import '../../domain/entities/ubicacion.dart';
 import '../../domain/entities/inventario_completo.dart';
 import '../../domain/entities/movimiento_inventario.dart';
+import '../../domain/entities/contenedor.dart';
 import '../../domain/repositories/inventario_repository.dart';
 import '../datasources/inventario_datasource.dart';
 import '../models/producto_model.dart';
@@ -190,6 +191,36 @@ class InventarioRepositoryImpl implements InventarioRepository {
   @override
   Future<void> actualizarCantidadJumper(int idProducto, int nuevaCantidad) async {
     await dataSource.actualizarCantidadJumper(idProducto, nuevaCantidad);
+  }
+
+  @override
+  Future<List<Contenedor>> getContenedoresByProducto(int idProducto) async {
+    return await dataSource.getContenedoresByProducto(idProducto);
+  }
+
+  @override
+  Future<Map<int, List<Contenedor>>> getContenedoresByProductos(List<int> idProductos) async {
+    return await dataSource.getContenedoresByProductos(idProductos);
+  }
+
+  @override
+  Future<Contenedor> createContenedor(Contenedor contenedor) async {
+    return await dataSource.createContenedor(contenedor);
+  }
+
+  @override
+  Future<Contenedor> updateContenedor(Contenedor contenedor) async {
+    return await dataSource.updateContenedor(contenedor);
+  }
+
+  @override
+  Future<void> deleteContenedor(int idContenedor) async {
+    await dataSource.deleteContenedor(idContenedor);
+  }
+
+  @override
+  Future<void> deleteContenedoresByProducto(int idProducto) async {
+    await dataSource.deleteContenedoresByProducto(idProducto);
   }
 
   @override

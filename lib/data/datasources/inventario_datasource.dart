@@ -1,4 +1,5 @@
 import '../../domain/entities/movimiento_inventario.dart';
+import '../../domain/entities/contenedor.dart';
 import '../models/producto_model.dart';
 import '../models/categoria_model.dart';
 import '../models/ubicacion_model.dart';
@@ -39,6 +40,14 @@ abstract class InventarioDataSource {
   
   // Actualización directa de cantidad para jumpers
   Future<void> actualizarCantidadJumper(int idProducto, int nuevaCantidad);
+
+  // Contenedores de jumpers
+  Future<List<Contenedor>> getContenedoresByProducto(int idProducto);
+  Future<Map<int, List<Contenedor>>> getContenedoresByProductos(List<int> idProductos);
+  Future<Contenedor> createContenedor(Contenedor contenedor);
+  Future<Contenedor> updateContenedor(Contenedor contenedor);
+  Future<void> deleteContenedor(int idContenedor);
+  Future<void> deleteContenedoresByProducto(int idProducto);
 }
 
 class SupabaseInventarioDataSource implements InventarioDataSource {
@@ -684,6 +693,118 @@ class SupabaseInventarioDataSource implements InventarioDataSource {
           .eq('id_producto', idProducto);
     } catch (e) {
       throw Exception('Error al actualizar cantidad de jumper: $e');
+    }
+  }
+
+  @override
+  Future<List<Contenedor>> getContenedoresByProducto(int idProducto) async {
+    try {
+      final response = await supabaseClient
+          .from('t_jumper_contenedores')
+          .select('*')
+          .eq('id_producto', idProducto)
+          .order('fecha_registro', ascending: false);
+      
+      return response.map((json) => Contenedor.fromJson(json)).toList();
+    } catch (e) {
+      throw Exception('Error al obtener contenedores del producto: $e');
+    }
+  }
+
+  @override
+  Future<Map<int, List<Contenedor>>> getContenedoresByProductos(List<int> idProductos) async {
+    try {
+      if (idProductos.isEmpty) {
+        return {};
+      }
+      
+      // Una sola consulta para todos los productos
+      final response = await supabaseClient
+          .from('t_jumper_contenedores')
+          .select('*')
+          .inFilter('id_producto', idProductos)
+          .order('fecha_registro', ascending: false);
+      
+      // Agrupar contenedores por id_producto
+      final contenedoresMap = <int, List<Contenedor>>{};
+      for (final json in response) {
+        final contenedor = Contenedor.fromJson(json);
+        final idProducto = contenedor.idProducto;
+        if (!contenedoresMap.containsKey(idProducto)) {
+          contenedoresMap[idProducto] = [];
+        }
+        contenedoresMap[idProducto]!.add(contenedor);
+      }
+      
+      // Asegurar que todos los productos tengan una lista (aunque esté vacía)
+      for (final idProducto in idProductos) {
+        if (!contenedoresMap.containsKey(idProducto)) {
+          contenedoresMap[idProducto] = [];
+        }
+      }
+      
+      return contenedoresMap;
+    } catch (e) {
+      throw Exception('Error al obtener contenedores de múltiples productos: $e');
+    }
+  }
+
+  @override
+  Future<Contenedor> createContenedor(Contenedor contenedor) async {
+    try {
+      final response = await supabaseClient
+          .from('t_jumper_contenedores')
+          .insert(contenedor.toJsonForInsert())
+          .select()
+          .single();
+      
+      return Contenedor.fromJson(response);
+    } catch (e) {
+      throw Exception('Error al crear contenedor: $e');
+    }
+  }
+
+  @override
+  Future<Contenedor> updateContenedor(Contenedor contenedor) async {
+    try {
+      final json = contenedor.toJson();
+      json.remove('id_contenedor'); // No actualizar el ID
+      json.remove('fecha_registro'); // No actualizar la fecha de registro
+      
+      final response = await supabaseClient
+          .from('t_jumper_contenedores')
+          .update(json)
+          .eq('id_contenedor', contenedor.idContenedor)
+          .select()
+          .single();
+      
+      return Contenedor.fromJson(response);
+    } catch (e) {
+      throw Exception('Error al actualizar contenedor: $e');
+    }
+  }
+
+  @override
+  Future<void> deleteContenedor(int idContenedor) async {
+    try {
+      await supabaseClient
+          .from('t_jumper_contenedores')
+          .delete()
+          .eq('id_contenedor', idContenedor);
+    } catch (e) {
+      throw Exception('Error al eliminar contenedor: $e');
+    }
+  }
+
+  @override
+  Future<void> deleteContenedoresByProducto(int idProducto) async {
+    try {
+      await supabaseClient
+          .from('t_jumper_contenedores')
+          .delete()
+          .eq('id_producto', idProducto);
+    } catch (e) {
+      throw Exception('Error al eliminar contenedores del producto: $e');
     }
   }
 }

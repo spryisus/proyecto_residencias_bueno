@@ -2,10 +2,12 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../domain/entities/inventario_completo.dart';
 import '../../domain/entities/categoria.dart';
 import '../../domain/entities/inventory_session.dart';
 import '../../domain/entities/producto.dart';
+import '../../domain/entities/contenedor.dart';
 import '../../domain/repositories/inventario_repository.dart';
 import '../../data/local/inventory_session_storage.dart';
 import '../../core/di/injection_container.dart';
@@ -51,36 +53,53 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
   String _searchQuery = '';
   InventorySession? _pendingSession;
   SortOrder _sortOrder = SortOrder.none;
-  Timer? _refreshTimer;
+  RealtimeChannel? _realtimeChannel;
   bool _isEditing = false; // Para evitar recargas durante edición
+  // Mapa para almacenar contenedores por producto (idProducto -> List<Contenedor>)
+  Map<int, List<Contenedor>> _contenedoresPorProducto = {};
 
   @override
   void initState() {
     super.initState();
     _loadInventory();
     _loadPendingSession();
-    // Iniciar actualización automática cada 5 segundos (solo en web)
+    // Iniciar suscripción a cambios en tiempo real (solo en web)
     if (kIsWeb) {
-      _startAutoRefresh();
+      _startRealtimeSubscription();
     }
   }
 
   @override
   void dispose() {
-    _refreshTimer?.cancel();
+    _realtimeChannel?.unsubscribe();
     super.dispose();
   }
 
-  void _startAutoRefresh() {
-    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      if (mounted) {
-        _loadPendingSession();
-        // Solo recargar inventario si no está en modo de edición
-        if (!_isEditing) {
-          _loadInventory();
-        }
-      }
-    });
+  void _startRealtimeSubscription() {
+    try {
+      // Suscribirse a cambios en la tabla inventory_sessions
+      _realtimeChannel = supabaseClient
+          .channel('inventory_sessions_changes')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'inventory_sessions',
+            callback: (payload) {
+              // Cuando hay un cambio en inventory_sessions, actualizar los datos
+              if (mounted && !_isEditing) {
+                debugPrint('🔄 Cambio detectado en inventory_sessions: ${payload.eventType}');
+                _loadPendingSession();
+                _loadInventory();
+              }
+            },
+          )
+          .subscribe();
+
+      debugPrint('✅ Suscripción Realtime iniciada para inventory_sessions');
+    } catch (e) {
+      debugPrint('❌ Error al iniciar suscripción Realtime: $e');
+      // Si falla Realtime, no hacer nada (la app seguirá funcionando sin auto-refresh)
+    }
   }
 
   Future<void> _loadInventory() async {
@@ -92,6 +111,45 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
 
       // Obtener inventario por categoría
       final inventario = await _inventarioRepository.getInventarioByCategoria(widget.categoria.idCategoria);
+      
+      // Detectar si es un inventario de jumpers
+      final esJumper = widget.categoriaNombre.toLowerCase().contains('jumper') ||
+                       widget.jumperCategoryFilter != null;
+      
+      // Si es jumper, cargar contenedores para todos los productos de una vez (optimizado)
+      if (esJumper && inventario.isNotEmpty) {
+        try {
+          // Obtener todos los IDs de productos
+          final idProductos = inventario.map((item) => item.producto.idProducto).toList();
+          
+          // Una sola consulta para todos los contenedores
+          final contenedoresMap = await _inventarioRepository.getContenedoresByProductos(idProductos);
+          
+          setState(() {
+            _contenedoresPorProducto = contenedoresMap;
+          });
+          
+          // Debug: mostrar resumen
+          final totalContenedores = contenedoresMap.values.fold<int>(0, (sum, list) => sum + list.length);
+          final productosConContenedores = contenedoresMap.values.where((list) => list.isNotEmpty).length;
+          debugPrint('✅ Contenedores cargados: $totalContenedores contenedores en $productosConContenedores productos (de ${idProductos.length} total)');
+        } catch (e) {
+          debugPrint('⚠️ Error al cargar contenedores: $e');
+          // Inicializar con listas vacías para evitar errores
+          final contenedoresMap = <int, List<Contenedor>>{};
+          for (final item in inventario) {
+            contenedoresMap[item.producto.idProducto] = [];
+          }
+          setState(() {
+            _contenedoresPorProducto = contenedoresMap;
+          });
+        }
+      } else if (esJumper) {
+        // Si no hay inventario, limpiar contenedores
+        setState(() {
+          _contenedoresPorProducto = {};
+        });
+      }
       
       // Debug: verificar cuántos items se obtuvieron
       debugPrint('📦 Inventario cargado: ${inventario.length} items');
@@ -492,52 +550,134 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
                               ),
                               
                               // Tamaño y ubicación (rack - contenedor)
-                              if (item.producto.tamano != null) ...[
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Icon(Icons.straighten, size: 14, color: Theme.of(context).colorScheme.primary),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '${item.producto.tamano} m',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Theme.of(context).colorScheme.primary,
-                                      ),
-                                    ),
-                                    if (item.producto.rack != null || item.producto.contenedor != null) ...[
-                                      const SizedBox(width: 12),
-                                      Icon(Icons.inventory_2, size: 14, color: Theme.of(context).colorScheme.secondary),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        _buildRackContenedorText(item.producto.rack, item.producto.contenedor),
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Theme.of(context).colorScheme.secondary,
-                                          fontWeight: FontWeight.w500,
+                              // Detectar si es jumper y tiene contenedores
+                              Builder(
+                                builder: (context) {
+                                  final esJumper = widget.categoriaNombre.toLowerCase().contains('jumper') ||
+                                                   widget.jumperCategoryFilter != null;
+                                  final contenedores = _contenedoresPorProducto[item.producto.idProducto] ?? [];
+                                  final tieneContenedores = esJumper && contenedores.isNotEmpty;
+                                  
+                                  // Debug temporal para verificar contenedores
+                                  if (esJumper) {
+                                    debugPrint('🔍 [UI] ${item.producto.nombre} (ID: ${item.producto.idProducto}) - Contenedores: ${contenedores.length}, Tiene: $tieneContenedores, esJumper: $esJumper');
+                                    if (contenedores.isNotEmpty) {
+                                      for (final cont in contenedores) {
+                                        debugPrint('   📦 UI: Rack: ${cont.rack}, Contenedor: ${cont.contenedor}');
+                                      }
+                                    }
+                                  }
+                                  
+                                  if (item.producto.tamano != null) {
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          children: [
+                                            Icon(Icons.straighten, size: 14, color: Theme.of(context).colorScheme.primary),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              '${item.producto.tamano} m',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Theme.of(context).colorScheme.primary,
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ] else if (item.producto.rack != null || item.producto.contenedor != null) ...[
-                                // Si no hay tamaño, mostrar solo rack y contenedor
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    Icon(Icons.inventory_2, size: 14, color: Theme.of(context).colorScheme.secondary),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      _buildRackContenedorText(item.producto.rack, item.producto.contenedor),
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Theme.of(context).colorScheme.secondary,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                                        if (tieneContenedores) ...[
+                                          const SizedBox(height: 8),
+                                          ...contenedores.map((cont) => Padding(
+                                            padding: const EdgeInsets.only(bottom: 4),
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.inventory_2, size: 12, color: Colors.grey[600]),
+                                                const SizedBox(width: 4),
+                                                Expanded(
+                                                  child: Text(
+                                                    _buildRackContenedorText(cont.rack, cont.contenedor),
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      color: Colors.grey[700],
+                                                      fontWeight: FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          )).toList(),
+                                        ] else if (item.producto.rack != null || item.producto.contenedor != null) ...[
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              Icon(Icons.inventory_2, size: 14, color: Theme.of(context).colorScheme.secondary),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                _buildRackContenedorText(item.producto.rack, item.producto.contenedor),
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Theme.of(context).colorScheme.secondary,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ],
+                                    );
+                                  } else if (tieneContenedores) {
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const SizedBox(height: 4),
+                                        ...contenedores.map((cont) => Padding(
+                                          padding: const EdgeInsets.only(bottom: 4),
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.inventory_2, size: 12, color: Colors.grey[600]),
+                                              const SizedBox(width: 4),
+                                              Expanded(
+                                                child: Text(
+                                                  _buildRackContenedorText(cont.rack, cont.contenedor),
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.grey[700],
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        )).toList(),
+                                      ],
+                                    );
+                                  } else if (item.producto.rack != null || item.producto.contenedor != null) {
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          children: [
+                                            Icon(Icons.inventory_2, size: 14, color: Theme.of(context).colorScheme.secondary),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              _buildRackContenedorText(item.producto.rack, item.producto.contenedor),
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Theme.of(context).colorScheme.secondary,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    );
+                                  }
+                                  return const SizedBox.shrink();
+                                },
+                              ),
+                              
                               
                               const SizedBox(height: 12),
                               
@@ -1319,37 +1459,56 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 6,
-                        children: [
-                          if (item.producto.tamano != null)
-                            _buildInfoChip(
-                              context,
-                              icon: Icons.straighten,
-                              text: '${item.producto.tamano} m',
-                            ),
-                          if (item.producto.descripcion != null && item.producto.descripcion!.isNotEmpty)
-                            _buildInfoChip(
-                              context,
-                              icon: Icons.notes,
-                              text: item.producto.descripcion!,
-                              maxWidth: isMobile ? 150 : 180,
-                            ),
-                          if (item.producto.rack != null || item.producto.contenedor != null)
-                            _buildInfoChip(
-                              context,
-                              icon: Icons.inventory_2,
-                              text: _buildRackContenedorText(item.producto.rack, item.producto.contenedor),
-                            ),
-                          if (tieneCambiosPendientes)
-                            _buildInfoChip(
-                              context,
-                              icon: Icons.pending_actions,
-                              text: 'Cambio pendiente',
-                              maxWidth: isMobile ? 130 : 150,
-                            ),
-                        ],
+                      Builder(
+                        builder: (context) {
+                          final esJumper = widget.categoriaNombre.toLowerCase().contains('jumper') ||
+                                           widget.jumperCategoryFilter != null;
+                          final contenedores = _contenedoresPorProducto[item.producto.idProducto] ?? [];
+                          final tieneContenedores = esJumper && contenedores.isNotEmpty;
+                          
+                          return Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: [
+                              if (item.producto.tamano != null)
+                                _buildInfoChip(
+                                  context,
+                                  icon: Icons.straighten,
+                                  text: '${item.producto.tamano} m',
+                                ),
+                              if (item.producto.descripcion != null && item.producto.descripcion!.isNotEmpty)
+                                _buildInfoChip(
+                                  context,
+                                  icon: Icons.notes,
+                                  text: item.producto.descripcion!,
+                                  maxWidth: isMobile ? 150 : 180,
+                                ),
+                              // Mostrar contenedores si es jumper y tiene contenedores
+                              if (tieneContenedores)
+                                ...contenedores.map((cont) => 
+                                  _buildInfoChip(
+                                    context,
+                                    icon: Icons.inventory_2,
+                                    text: _buildRackContenedorText(cont.rack, cont.contenedor),
+                                  )
+                                ).toList(),
+                              // Mostrar rack/contenedor antiguo si no es jumper o no tiene contenedores nuevos
+                              if (!tieneContenedores && (item.producto.rack != null || item.producto.contenedor != null))
+                                _buildInfoChip(
+                                  context,
+                                  icon: Icons.inventory_2,
+                                  text: _buildRackContenedorText(item.producto.rack, item.producto.contenedor),
+                                ),
+                              if (tieneCambiosPendientes)
+                                _buildInfoChip(
+                                  context,
+                                  icon: Icons.pending_actions,
+                                  text: 'Cambio pendiente',
+                                  maxWidth: isMobile ? 130 : 150,
+                                ),
+                            ],
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -1441,71 +1600,202 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
     final descripcionController = TextEditingController();
     final tamanoController = TextEditingController();
     final cantidadController = TextEditingController();
-    final rackController = TextEditingController();
-    final contenedorController = TextEditingController();
+    
+    // Lista de contenedores (rack, contenedor, cantidad)
+    final contenedores = <Map<String, dynamic>>[];
+    
+    // Detectar si es un inventario de jumpers
+    final esJumper = widget.categoriaNombre.toLowerCase().contains('jumper') ||
+                     widget.jumperCategoryFilter != null;
 
     final isMobile = MediaQuery.of(context).size.width < 600;
+    
+    // Función para construir el contenido del diálogo
+    Widget buildDialogContent() {
+      return StatefulBuilder(
+        builder: (context, setState) {
+          return SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nombreController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre *',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descripcionController,
+                  decoration: const InputDecoration(
+                    labelText: 'Descripción',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 2,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: tamanoController,
+                  decoration: const InputDecoration(
+                    labelText: 'Tamaño (metros)',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: cantidadController,
+                  decoration: const InputDecoration(
+                    labelText: 'Cantidad inicial *',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 12),
+                
+                // Sección de contenedores (solo para jumpers)
+                if (esJumper) ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Contenedores',
+                        style: TextStyle(
+                          fontSize: isMobile ? 16 : 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            contenedores.add({
+                              'rack': '',
+                              'contenedor': '',
+                              'cantidad': 0,
+                            });
+                          });
+                        },
+                        icon: const Icon(Icons.add, size: 20),
+                        label: const Text('Agregar'),
+                      ),
+                    ],
+                  ),
+                  if (contenedores.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text(
+                        'No hay contenedores. Presiona "Agregar" para agregar uno.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  ...contenedores.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final contenedor = entry.value;
+                    final rackController = TextEditingController(text: contenedor['rack'] ?? '');
+                    final contenedorController = TextEditingController(text: contenedor['contenedor'] ?? '');
+                    
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Contenedor ${index + 1}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                                  onPressed: () {
+                                    setState(() {
+                                      contenedores.removeAt(index);
+                                    });
+                                  },
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: rackController,
+                              decoration: const InputDecoration(
+                                labelText: 'Rack',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              onChanged: (value) {
+                                contenedor['rack'] = value;
+                              },
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: contenedorController,
+                              decoration: const InputDecoration(
+                                labelText: 'Contenedor *',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              onChanged: (value) {
+                                contenedor['contenedor'] = value;
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ] else ...[
+                  // Para productos no-jumpers, mantener los campos originales
+                  TextField(
+                    controller: TextEditingController(),
+                    decoration: const InputDecoration(
+                      labelText: 'Rack',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) {
+                      // Mantener compatibilidad con el código anterior
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: TextEditingController(),
+                    decoration: const InputDecoration(
+                      labelText: 'Contenedor',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) {
+                      // Mantener compatibilidad con el código anterior
+                    },
+                  ),
+                ],
+              ],
+            ),
+          );
+        },
+      );
+    }
+
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Agregar Producto', style: TextStyle(fontSize: isMobile ? 18 : 20)),
         contentPadding: EdgeInsets.all(isMobile ? 16 : 24),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nombreController,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre *',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: descripcionController,
-                decoration: const InputDecoration(
-                  labelText: 'Descripción',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 2,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: tamanoController,
-                decoration: const InputDecoration(
-                  labelText: 'Tamaño (metros)',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: cantidadController,
-                decoration: const InputDecoration(
-                  labelText: 'Cantidad inicial *',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: rackController,
-                decoration: const InputDecoration(
-                  labelText: 'Rack',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: contenedorController,
-                decoration: const InputDecoration(
-                  labelText: 'Contenedor',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
+        content: SizedBox(
+          width: isMobile ? double.maxFinite : 500,
+          child: buildDialogContent(),
         ),
         actions: [
           if (isMobile)
@@ -1522,6 +1812,22 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
                         );
                         return;
                       }
+                      
+                      // Validar contenedores si es jumper
+                      if (esJumper && contenedores.isNotEmpty) {
+                        for (var i = 0; i < contenedores.length; i++) {
+                          final cont = contenedores[i];
+                          if ((cont['contenedor'] as String? ?? '').trim().isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('El contenedor ${i + 1} debe tener un nombre'),
+                              ),
+                            );
+                            return;
+                          }
+                        }
+                      }
+                      
                       Navigator.pop(context, true);
                     },
                     child: const Text('Agregar'),
@@ -1553,6 +1859,22 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
                       );
                       return;
                     }
+                    
+                    // Validar contenedores si es jumper
+                    if (esJumper && contenedores.isNotEmpty) {
+                      for (var i = 0; i < contenedores.length; i++) {
+                        final cont = contenedores[i];
+                        if ((cont['contenedor'] as String? ?? '').trim().isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('El contenedor ${i + 1} debe tener un nombre'),
+                            ),
+                          );
+                          return;
+                        }
+                      }
+                    }
+                    
                     Navigator.pop(context, true);
                   },
                   child: const Text('Agregar'),
@@ -1565,7 +1887,11 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
 
     if (result == true) {
       try {
-        // Crear producto
+        // Para jumpers, usar la cantidad del campo (no se calcula por contenedores)
+        // Para productos no-jumpers, usar la cantidad del campo
+        int cantidadTotal = int.tryParse(cantidadController.text.trim()) ?? 0;
+
+        // Crear producto (sin rack ni contenedor en el producto mismo para jumpers)
         final producto = Producto(
           idProducto: 0, // Se generará automáticamente
           nombre: nombreController.text.trim(),
@@ -1575,15 +1901,9 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
           tamano: tamanoController.text.trim().isEmpty 
               ? null 
               : int.tryParse(tamanoController.text.trim()),
-          unidad: cantidadController.text.trim().isEmpty 
-              ? '0' 
-              : cantidadController.text.trim(),
-          rack: rackController.text.trim().isEmpty 
-              ? null 
-              : rackController.text.trim(),
-          contenedor: contenedorController.text.trim().isEmpty 
-              ? null 
-              : contenedorController.text.trim(),
+          unidad: cantidadTotal.toString(),
+          rack: null, // Ya no se usa para jumpers
+          contenedor: null, // Ya no se usa para jumpers
         );
 
         final productoCreado = await _inventarioRepository.createProducto(producto);
@@ -1594,10 +1914,28 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
           'id_categoria': widget.categoria.idCategoria,
         });
 
+        // Si es jumper y hay contenedores, crearlos (sin cantidad)
+        if (esJumper && contenedores.isNotEmpty) {
+          for (final contData in contenedores) {
+            final contenedor = Contenedor(
+              idContenedor: 0,
+              idProducto: productoCreado.idProducto,
+              rack: (contData['rack'] as String? ?? '').trim().isEmpty
+                  ? null
+                  : (contData['rack'] as String).trim(),
+              contenedor: (contData['contenedor'] as String).trim(),
+              cantidad: 0, // Sin cantidad por contenedor
+            );
+            await _inventarioRepository.createContenedor(contenedor);
+          }
+        }
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Producto agregado correctamente'),
+            SnackBar(
+              content: Text(esJumper && contenedores.isNotEmpty
+                  ? 'Jumper agregado con ${contenedores.length} contenedor(es)'
+                  : 'Producto agregado correctamente'),
               backgroundColor: Colors.green,
             ),
           );
@@ -1626,98 +1964,289 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
     final descripcionController = TextEditingController(text: item.producto.descripcion ?? '');
     final tamanoController = TextEditingController(text: item.producto.tamano?.toString() ?? '');
     final cantidadController = TextEditingController(text: item.cantidad.toString());
-    final rackController = TextEditingController(text: item.producto.rack ?? '');
-    final contenedorController = TextEditingController(text: item.producto.contenedor ?? '');
+    
+    // Detectar si es un inventario de jumpers
+    final esJumper = widget.categoriaNombre.toLowerCase().contains('jumper') ||
+                     widget.jumperCategoryFilter != null;
+    
+    // Cargar contenedores existentes si es jumper
+    List<Contenedor> contenedoresExistentes = [];
+    if (esJumper) {
+      try {
+        contenedoresExistentes = await _inventarioRepository.getContenedoresByProducto(
+          item.producto.idProducto,
+        );
+      } catch (e) {
+        debugPrint('⚠️ Error al cargar contenedores: $e');
+      }
+    }
+    
+    // Si no hay contenedores pero hay rack/contenedor en el producto, crear uno inicial
+    final contenedores = <Map<String, dynamic>>[];
+    if (esJumper) {
+      if (contenedoresExistentes.isEmpty && 
+          (item.producto.rack != null || item.producto.contenedor != null)) {
+        // Migrar datos antiguos a formato de contenedor
+        contenedores.add({
+          'id_contenedor': null,
+          'rack': item.producto.rack ?? '',
+          'contenedor': item.producto.contenedor ?? '',
+          'esNuevo': true,
+        });
+      } else {
+        // Usar contenedores existentes
+        for (final cont in contenedoresExistentes) {
+          contenedores.add({
+            'id_contenedor': cont.idContenedor,
+            'rack': cont.rack ?? '',
+            'contenedor': cont.contenedor,
+            'esNuevo': false,
+          });
+        }
+      }
+    }
+    
+    // Para productos no-jumpers, crear controladores para rack y contenedor
+    final rackController = esJumper 
+        ? null 
+        : TextEditingController(text: item.producto.rack ?? '');
+    final contenedorController = esJumper 
+        ? null 
+        : TextEditingController(text: item.producto.contenedor ?? '');
 
     final result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Editar Producto'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nombreController,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre *',
-                  border: OutlineInputBorder(),
-                ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Editar Producto'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nombreController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nombre *',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: descripcionController,
+                    decoration: const InputDecoration(
+                      labelText: 'Descripción',
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: tamanoController,
+                    decoration: const InputDecoration(
+                      labelText: 'Tamaño (metros)',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                  const SizedBox(height: 12),
+                  if (!esJumper)
+                    TextField(
+                      controller: cantidadController,
+                      decoration: const InputDecoration(
+                        labelText: 'Cantidad *',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                  if (!esJumper) const SizedBox(height: 12),
+                  
+                  // Sección de contenedores (solo para jumpers)
+                  if (esJumper) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Contenedores',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () {
+                          setState(() {
+                            contenedores.add({
+                              'id_contenedor': null,
+                              'rack': '',
+                              'contenedor': '',
+                              'esNuevo': true,
+                            });
+                          });
+                          },
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Agregar'),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (contenedores.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Text(
+                          'No hay contenedores. Presiona "Agregar" para agregar uno.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ...contenedores.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final contenedor = entry.value;
+                      final rackController = TextEditingController(text: contenedor['rack'] ?? '');
+                      final contenedorController = TextEditingController(text: contenedor['contenedor'] ?? '');
+                      
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey[300]!),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Contenedor ${index + 1}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                                  onPressed: () {
+                                    setState(() {
+                                      contenedores.removeAt(index);
+                                    });
+                                  },
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  tooltip: 'Eliminar contenedor',
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: rackController,
+                              decoration: const InputDecoration(
+                                labelText: 'Rack',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                              ),
+                              onChanged: (value) {
+                                contenedor['rack'] = value;
+                              },
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: contenedorController,
+                              decoration: const InputDecoration(
+                                labelText: 'Contenedor *',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                              ),
+                              onChanged: (value) {
+                                contenedor['contenedor'] = value;
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ] else ...[
+                    // Para productos no-jumpers, mantener los campos originales
+                    TextField(
+                      controller: rackController!,
+                      decoration: const InputDecoration(
+                        labelText: 'Rack',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: contenedorController!,
+                      decoration: const InputDecoration(
+                        labelText: 'Contenedor',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: descripcionController,
-                decoration: const InputDecoration(
-                  labelText: 'Descripción',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 2,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar'),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: tamanoController,
-                decoration: const InputDecoration(
-                  labelText: 'Tamaño (metros)',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: cantidadController,
-                decoration: const InputDecoration(
-                  labelText: 'Cantidad *',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: rackController,
-                decoration: const InputDecoration(
-                  labelText: 'Rack',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: contenedorController,
-                decoration: const InputDecoration(
-                  labelText: 'Contenedor',
-                  border: OutlineInputBorder(),
-                ),
+              ElevatedButton(
+                onPressed: () {
+                  if (nombreController.text.trim().isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('El nombre es obligatorio')),
+                    );
+                    return;
+                  }
+                  
+                  // Validar contenedores si es jumper
+                  if (esJumper && contenedores.isNotEmpty) {
+                    for (var i = 0; i < contenedores.length; i++) {
+                      final cont = contenedores[i];
+                      if ((cont['contenedor'] as String? ?? '').trim().isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('El contenedor ${i + 1} debe tener un nombre'),
+                          ),
+                        );
+                        return;
+                      }
+                    }
+                  }
+                  
+                  Navigator.pop(context, true);
+                },
+                child: const Text('Guardar'),
               ),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (nombreController.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('El nombre es obligatorio')),
-                );
-                return;
-              }
-              Navigator.pop(context, true);
-            },
-            child: const Text('Guardar'),
-          ),
-        ],
+          );
+        },
       ),
     );
 
     if (result == true) {
       try {
-        // Obtener la nueva cantidad
-        final nuevaCantidadStr = cantidadController.text.trim();
-        final nuevaCantidad = int.tryParse(nuevaCantidadStr);
+        // Para jumpers, mantener la cantidad actual (no se calcula por contenedores)
+        // Para productos no-jumpers, usar la cantidad del campo
+        int cantidadTotal = 0;
+        if (esJumper) {
+          // Mantener la cantidad actual del producto para jumpers
+          cantidadTotal = item.cantidad;
+        } else {
+          cantidadTotal = int.tryParse(cantidadController.text.trim()) ?? 0;
+        }
         
-        if (nuevaCantidad == null || nuevaCantidad < 0) {
+        if (cantidadTotal < 0) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -1738,34 +2267,96 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
           tamano: tamanoController.text.trim().isEmpty 
               ? null 
               : int.tryParse(tamanoController.text.trim()),
-          unidad: cantidadController.text.trim(),
-          rack: rackController.text.trim().isEmpty 
-              ? null 
-              : rackController.text.trim(),
-          contenedor: contenedorController.text.trim().isEmpty 
-              ? null 
-              : contenedorController.text.trim(),
+          unidad: cantidadTotal.toString(),
+          rack: null, // Ya no se usa para jumpers
+          contenedor: null, // Ya no se usa para jumpers
         );
 
         await _inventarioRepository.updateProducto(productoActualizado);
 
-        // Actualizar la cantidad en t_inventarios si cambió
-        final cantidadActual = item.cantidad;
-        final diferencia = nuevaCantidad - cantidadActual;
-        
-        if (diferencia != 0) {
-          await _inventarioRepository.ajustarInventario(
-            item.producto.idProducto,
-            item.ubicacion.idUbicacion,
-            diferencia,
-            'Edición manual de cantidad - ${widget.categoriaNombre}',
+        // Si es jumper, gestionar contenedores
+        if (esJumper) {
+          // Obtener IDs de contenedores existentes que se mantienen
+          final contenedoresAMantener = contenedores
+              .where((c) => c['id_contenedor'] != null && !c['esNuevo'])
+              .map((c) => c['id_contenedor'] as int)
+              .toList();
+          
+          // Eliminar contenedores que ya no están en la lista
+          for (final contExistente in contenedoresExistentes) {
+            if (!contenedoresAMantener.contains(contExistente.idContenedor)) {
+              await _inventarioRepository.deleteContenedor(contExistente.idContenedor);
+            }
+          }
+          
+          // Actualizar contenedores existentes y crear nuevos
+          for (final contData in contenedores) {
+            if (contData['esNuevo'] == true) {
+              // Crear nuevo contenedor (sin cantidad)
+              final nuevoContenedor = Contenedor(
+                idContenedor: 0,
+                idProducto: item.producto.idProducto,
+                rack: (contData['rack'] as String? ?? '').trim().isEmpty
+                    ? null
+                    : (contData['rack'] as String).trim(),
+                contenedor: (contData['contenedor'] as String).trim(),
+                cantidad: 0, // Sin cantidad por contenedor
+              );
+              await _inventarioRepository.createContenedor(nuevoContenedor);
+            } else if (contData['id_contenedor'] != null) {
+              // Actualizar contenedor existente (sin cantidad)
+              final contenedorActualizado = Contenedor(
+                idContenedor: contData['id_contenedor'] as int,
+                idProducto: item.producto.idProducto,
+                rack: (contData['rack'] as String? ?? '').trim().isEmpty
+                    ? null
+                    : (contData['rack'] as String).trim(),
+                contenedor: (contData['contenedor'] as String).trim(),
+                cantidad: 0, // Sin cantidad por contenedor
+              );
+              await _inventarioRepository.updateContenedor(contenedorActualizado);
+            }
+          }
+        } else {
+          // Para productos no-jumpers, actualizar rack y contenedor
+          final productoActualizado = item.producto.copyWith(
+            nombre: nombreController.text.trim(),
+            descripcion: descripcionController.text.trim().isEmpty 
+                ? null 
+                : descripcionController.text.trim(),
+            tamano: tamanoController.text.trim().isEmpty 
+                ? null 
+                : int.tryParse(tamanoController.text.trim()),
+            unidad: cantidadController.text.trim(),
+            rack: rackController!.text.trim().isEmpty 
+                ? null 
+                : rackController.text.trim(),
+            contenedor: contenedorController!.text.trim().isEmpty 
+                ? null 
+                : contenedorController.text.trim(),
           );
+          await _inventarioRepository.updateProducto(productoActualizado);
+          
+          // Actualizar la cantidad en t_inventarios si cambió
+          final cantidadActual = item.cantidad;
+          final diferencia = cantidadTotal - cantidadActual;
+          
+          if (diferencia != 0) {
+            await _inventarioRepository.ajustarInventario(
+              item.producto.idProducto,
+              item.ubicacion.idUbicacion,
+              diferencia,
+              'Edición manual de cantidad - ${widget.categoriaNombre}',
+            );
+          }
         }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Producto actualizado correctamente'),
+            SnackBar(
+              content: Text(esJumper && contenedores.isNotEmpty
+                  ? 'Jumper actualizado con ${contenedores.length} contenedor(es)'
+                  : 'Producto actualizado correctamente'),
               backgroundColor: Colors.green,
             ),
           );

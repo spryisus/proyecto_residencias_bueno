@@ -2,6 +2,7 @@ import '../entities/producto.dart';
 import '../entities/categoria.dart';
 import '../entities/ubicacion.dart';
 import '../entities/inventario_completo.dart';
+import '../entities/contenedor.dart';
 
 abstract class InventarioRepository {
   // Productos
@@ -39,6 +40,14 @@ abstract class InventarioRepository {
   
   // Actualización directa de cantidad para jumpers (actualiza t_productos.unidad)
   Future<void> actualizarCantidadJumper(int idProducto, int nuevaCantidad);
+
+  // Contenedores de jumpers
+  Future<List<Contenedor>> getContenedoresByProducto(int idProducto);
+  Future<Map<int, List<Contenedor>>> getContenedoresByProductos(List<int> idProductos);
+  Future<Contenedor> createContenedor(Contenedor contenedor);
+  Future<Contenedor> updateContenedor(Contenedor contenedor);
+  Future<void> deleteContenedor(int idContenedor);
+  Future<void> deleteContenedoresByProducto(int idProducto);
 
   // Estadísticas
   Future<Map<String, int>> getEstadisticasPorCategoria();
