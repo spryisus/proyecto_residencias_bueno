@@ -1,6 +1,7 @@
 import io
 import os
 import logging
+import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
@@ -416,9 +417,33 @@ async def generate_jumpers_excel(request: Request):
             # Columnas: B=TIPO, C=TAMAÑO, D=CANTIDAD, E=RACK, F=CONTENEDOR (o #)
             start_row = 5
             
+            # Buscar la columna UBICACION en los encabezados PRIMERO
+            # Buscar en varias filas por si cambia la estructura de la plantilla
+            ubicacion_col = None
+            for row_header in [4, 3, 2, 1]:  # Buscar en varias filas
+                for col in range(1, ws.max_column + 1):
+                    cell_value = ws.cell(row=row_header, column=col).value
+                    if cell_value:
+                        cell_str = str(cell_value).upper().strip()
+                        # Buscar variaciones: UBICACION, UBICACIÓN, UBIC, LOCATION
+                        if "UBICACION" in cell_str or "UBICACIÓN" in cell_str or "UBIC" in cell_str:
+                            ubicacion_col = col
+                            logger.info(f"📍 Columna UBICACION encontrada en fila {row_header}, columna {col}")
+                            break
+                if ubicacion_col:
+                    break
+            
+            # Si no se encuentra UBICACION, usar la columna E (5) como fallback
+            # (normalmente es UBICACION después de TIPO, TAMAÑO, CANTIDAD)
+            if ubicacion_col is None:
+                ubicacion_col = 5
+                logger.warning(f"⚠️ Columna UBICACION no encontrada, usando columna {ubicacion_col} como fallback")
+            
             # Obtener formato de referencia de la fila 5
+            # Incluir la columna UBICACION en el rango si está dentro de B-F, o extender el rango
+            max_ref_col = max(7, ubicacion_col + 1)  # Asegurar que incluya UBICACION
             reference_cells = {}
-            for col in range(2, 7):  # Columnas B-F
+            for col in range(2, max_ref_col):  # Columnas B hasta incluir UBICACION
                 ref_cell = ws.cell(row=start_row, column=col)
                 reference_cells[col] = {
                     'font': ref_cell.font.copy() if ref_cell.font else None,
@@ -442,10 +467,50 @@ async def generate_jumpers_excel(request: Request):
                 _safe_set_cell_value(ws, row, 3, item.get("tamano", item.get("size", "")))
                 # Col D: CANTIDAD
                 _safe_set_cell_value(ws, row, 4, item.get("cantidad", item.get("quantity", 0)))
-                # Col E: RACK
-                _safe_set_cell_value(ws, row, 5, item.get("rack", ""))
-                # Col F: CONTENEDOR (o #)
-                _safe_set_cell_value(ws, row, 6, item.get("contenedor", item.get("container", "")))
+                
+                # Columna UBICACION: Formatear contenedores múltiples como R{rack}-{contenedor}
+                # Solo se escribe en UBICACION, NO en columnas RACK/CONTENEDOR por separado
+                contenedores = item.get("contenedores", [])
+                ubicaciones = []
+                
+                if contenedores and len(contenedores) > 0:
+                    # Formatear cada contenedor como R{rack}-{contenedor}
+                    for cont in contenedores:
+                        rack = str(cont.get("rack", "")).strip()
+                        contenedor = str(cont.get("contenedor", "")).strip()
+                        
+                        if rack and contenedor:
+                            # Extraer número del rack (ej: "1" de "Rack 1" o "1")
+                            rack_num = rack
+                            if "rack" in rack.lower():
+                                # Si contiene "rack", extraer el número
+                                match = re.search(r'\d+', rack)
+                                if match:
+                                    rack_num = match.group()
+                            
+                            ubicacion = f"R{rack_num}-{contenedor}"
+                            ubicaciones.append(ubicacion)
+                        elif contenedor:
+                            # Si solo hay contenedor sin rack, solo mostrar el contenedor
+                            ubicaciones.append(contenedor)
+                
+                # Si no hay contenedores múltiples, usar rack/contenedor antiguo como fallback
+                if not ubicaciones:
+                    rack = str(item.get("rack", "")).strip()
+                    contenedor = str(item.get("contenedor", item.get("container", ""))).strip()
+                    if rack and contenedor:
+                        rack_num = rack
+                        if "rack" in rack.lower():
+                            match = re.search(r'\d+', rack)
+                            if match:
+                                rack_num = match.group()
+                        ubicaciones.append(f"R{rack_num}-{contenedor}")
+                    elif contenedor:
+                        ubicaciones.append(contenedor)
+                
+                # Combinar todas las ubicaciones en una sola celda (separadas por comas)
+                ubicacion_text = ", ".join(ubicaciones) if ubicaciones else ""
+                _safe_set_cell_value(ws, row, ubicacion_col, ubicacion_text)
                 
                 # Aplicar formato de la fila 5 a cada celda
                 for col in range(2, 7):
@@ -466,6 +531,39 @@ async def generate_jumpers_excel(request: Request):
                         cell.alignment = ref_format['alignment']
                     if ref_format['number_format']:
                         cell.number_format = ref_format['number_format']
+                
+                # Aplicar formato a la columna UBICACION también
+                if ubicacion_col:
+                    ubicacion_cell = ws.cell(row=row, column=ubicacion_col)
+                    
+                    # Si la columna UBICACION está en el rango de referencia (B-F), usar ese formato
+                    if ubicacion_col in reference_cells:
+                        ref_format = reference_cells[ubicacion_col]
+                        if ref_format['font']:
+                            ubicacion_cell.font = ref_format['font']
+                        if ref_format['fill']:
+                            ubicacion_cell.fill = ref_format['fill']
+                        if ref_format['border']:
+                            ubicacion_cell.border = ref_format['border']
+                        if ref_format['alignment']:
+                            ubicacion_cell.alignment = ref_format['alignment']
+                        if ref_format['number_format']:
+                            ubicacion_cell.number_format = ref_format['number_format']
+                    else:
+                        # Si está fuera del rango, obtener formato de la fila de referencia
+                        if ubicacion_col <= ws.max_column:
+                            ref_cell = ws.cell(row=start_row, column=ubicacion_col)
+                            
+                            if ref_cell.font:
+                                ubicacion_cell.font = ref_cell.font.copy()
+                            if ref_cell.fill:
+                                ubicacion_cell.fill = ref_cell.fill.copy()
+                            if ref_cell.border:
+                                ubicacion_cell.border = ref_cell.border.copy()
+                            if ref_cell.alignment:
+                                ubicacion_cell.alignment = ref_cell.alignment.copy()
+                            if ref_cell.number_format:
+                                ubicacion_cell.number_format = ref_cell.number_format
         else:
             # Crear desde cero con formato correcto si no hay plantilla
             wb = _create_jumpers_excel(items)

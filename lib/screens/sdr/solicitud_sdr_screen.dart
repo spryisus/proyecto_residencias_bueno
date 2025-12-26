@@ -14,26 +14,29 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
   // Controladores para Datos de Falla de aviso
   final _fechaController = TextEditingController();
   final _descripcionAvisoController = TextEditingController();
-  final _grupoPlanificadorController = TextEditingController();
-  final _puestoTrabajoResponsableController = TextEditingController();
-  final _autorAvisoController = TextEditingController();
+  final _grupoPlanificadorController = TextEditingController(text: 'LD. 70');
+  final _puestoTrabajoResponsableController = TextEditingController(text: 'PTAZ POZA RICA');
+  final _autorAvisoController = TextEditingController(text: '0117');
   final _motivoIntervencionController = TextEditingController();
   final _modeloDanoController = TextEditingController();
   final _causaAveriaController = TextEditingController();
   final _repercusionFuncionamientoController = TextEditingController();
+  String? _repercusionFuncionamientoSeleccionada;
+  String? _atencionDanoSeleccionada;
+  String? _areaEmpresaSeleccionada;
   final _estadoInstalacionController = TextEditingController();
   final _motivoIntervencionAfectacionController = TextEditingController();
   final _atencionDanoController = TextEditingController();
   final _prioridadController = TextEditingController();
   
   // Controladores para Lugar del Daño
-  final _centroEmplazamientoController = TextEditingController();
+  final _centroEmplazamientoController = TextEditingController(text: 'LDTX');
   final _areaEmpresaController = TextEditingController();
-  final _puestoTrabajoEmplazamientoController = TextEditingController();
-  final _divisionController = TextEditingController();
+  final _puestoTrabajoEmplazamientoController = TextEditingController(text: 'COM-PUE');
+  final _divisionController = TextEditingController(text: '70');
   final _estadoInstalacionLugarController = TextEditingController();
   final _datosDisponiblesController = TextEditingController();
-  final _emplazamiento1Controller = TextEditingController();
+  final _emplazamiento1Controller = TextEditingController(text: 'PTAZ PORZA RICA');
   final _emplazamiento2Controller = TextEditingController();
   final _localController = TextEditingController();
   final _campoClasificacionController = TextEditingController();
@@ -225,12 +228,15 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
       _modeloDanoController.clear();
       _causaAveriaController.clear();
       _repercusionFuncionamientoController.clear();
+      _repercusionFuncionamientoSeleccionada = null;
       _estadoInstalacionController.clear();
       _motivoIntervencionAfectacionController.clear();
       _atencionDanoController.clear();
+      _atencionDanoSeleccionada = null;
       _prioridadController.clear();
       _centroEmplazamientoController.clear();
       _areaEmpresaController.clear();
+      _areaEmpresaSeleccionada = null;
       _puestoTrabajoEmplazamientoController.clear();
       _divisionController.clear();
       _estadoInstalacionLugarController.clear();
@@ -262,15 +268,18 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
           _motivoIntervencionController.text = 'RECTIFICADOR DAÑADO (DAMAGED RECTIFIER)';
           _modeloDanoController.text = 'EN OPERACIÓN (IN OPERATION)';
           _causaAveriaController.text = 'FAN FAIL';
-          _repercusionFuncionamientoController.text = 'SIN UNIDAD (WITHOUT UNIT)';
+          _repercusionFuncionamientoSeleccionada = 'CON SUSTITUCION DE TARJETA';
+          _repercusionFuncionamientoController.text = 'CON SUSTITUCION DE TARJETA';
           _estadoInstalacionController.text = 'NA';
           _motivoIntervencionAfectacionController.text = 'SIN AFECTACION (NO AFFECTATION)';
-          _atencionDanoController.text = '';
+          _atencionDanoSeleccionada = 'MENOR';
+          _atencionDanoController.text = 'MENOR';
           _prioridadController.text = 'MENOR (MINOR)';
           
           // Lugar del Daño
           _centroEmplazamientoController.text = 'LDTX';
-          _areaEmpresaController.text = 'PTAZ POZA RICA';
+          _areaEmpresaSeleccionada = 'PTAZ';
+          _areaEmpresaController.text = 'PTAZ';
           _puestoTrabajoEmplazamientoController.text = 'COM-PUE';
           _divisionController.text = '70';
           _estadoInstalacionLugarController.text = 'CON SUSTITUCION DE RECTIFICADOR (WITH RECTIFIER REPLACEMENT)';
@@ -477,26 +486,108 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
     );
   }
 
+  // Helper para construir campos con label fuera y hintText dentro
+  Widget _buildFormField({
+    required TextEditingController controller,
+    required String label,
+    required String hintText,
+    int? maxLines,
+    String? Function(String?)? validator,
+    String? helperText,
+    bool readOnly = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          readOnly: readOnly,
+          decoration: InputDecoration(
+            hintText: hintText,
+            hintStyle: const TextStyle(
+              color: Colors.grey,
+              fontStyle: FontStyle.italic,
+            ),
+            border: const OutlineInputBorder(),
+            helperText: helperText,
+            filled: readOnly,
+            fillColor: readOnly ? Colors.grey[100] : null,
+          ),
+          maxLines: maxLines ?? 1,
+          validator: validator,
+        ),
+      ],
+    );
+  }
+
+  // Helper para construir dropdown con label fuera
+  Widget _buildDropdownField({
+    required String label,
+    required String hintText,
+    required String? value,
+    required List<String> items,
+    required Function(String?) onChanged,
+    String? Function(String?)? validator,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          value: value,
+          decoration: InputDecoration(
+            hintText: hintText,
+            hintStyle: const TextStyle(
+              color: Colors.grey,
+              fontStyle: FontStyle.italic,
+            ),
+            border: const OutlineInputBorder(),
+          ),
+          items: items.map((String item) {
+            return DropdownMenuItem<String>(
+              value: item,
+              child: Text(item),
+            );
+          }).toList(),
+          onChanged: onChanged,
+          validator: validator,
+        ),
+      ],
+    );
+  }
+
   // Sección 1: Datos de Falla de aviso (Móvil)
   Widget _buildMobileFormSection1() {
     return Column(
       children: [
-        TextFormField(
+        _buildFormField(
           controller: _fechaController,
-          decoration: const InputDecoration(
-            labelText: 'Fecha *',
-            border: OutlineInputBorder(),
-            hintText: 'YYYY-MM-DD',
-            helperText: 'Dejar vacío para fecha actual',
-          ),
+          label: 'Fecha *',
+          hintText: 'Ingrese la fecha en formato YYYY-MM-DD (dejar vacío para fecha actual)',
+          helperText: 'Dejar vacío para fecha actual',
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _descripcionAvisoController,
-          decoration: const InputDecoration(
-            labelText: 'Descripción del Aviso *',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Descripción del Aviso *',
+          hintText: 'Ingrese la descripción del aviso',
           maxLines: 3,
           validator: (value) {
             if (value == null || value.isEmpty) {
@@ -506,96 +597,98 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
           },
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _grupoPlanificadorController,
-          decoration: const InputDecoration(
-            labelText: 'Grupo planificador',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Grupo planificador',
+          hintText: 'Ingrese el grupo planificador',
+          readOnly: true,
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _puestoTrabajoResponsableController,
-          decoration: const InputDecoration(
-            labelText: 'Puesto de trabajo responsable',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Puesto de trabajo responsable',
+          hintText: 'Ingrese el puesto de trabajo responsable',
+          readOnly: true,
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _autorAvisoController,
-          decoration: const InputDecoration(
-            labelText: 'Autor de aviso',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Autor de aviso',
+          hintText: 'Ingrese el autor del aviso',
+          readOnly: true,
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _motivoIntervencionController,
-          decoration: const InputDecoration(
-            labelText: 'Motivo de intervención',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Motivo de intervención',
+          hintText: 'Ingrese el motivo de intervención',
           maxLines: 2,
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _modeloDanoController,
-          decoration: const InputDecoration(
-            labelText: 'Modelo del Daño',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Modelo del Daño',
+          hintText: 'Ingrese el modelo del daño',
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _causaAveriaController,
-          decoration: const InputDecoration(
-            labelText: 'Causa de la avería',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Causa de la avería',
+          hintText: 'Ingrese la causa de la avería',
           maxLines: 2,
         ),
         const SizedBox(height: 16),
-        TextFormField(
-          controller: _repercusionFuncionamientoController,
-          decoration: const InputDecoration(
-            labelText: 'Repercusión en el funcionamiento',
-            border: OutlineInputBorder(),
-          ),
-          maxLines: 2,
+        _buildDropdownField(
+          label: 'Repercusión en el funcionamiento',
+          hintText: 'Seleccione la repercusión en el funcionamiento',
+          value: _repercusionFuncionamientoSeleccionada,
+          items: const [
+            'CON SUSTITUCION DE TARJETA',
+            'ARREGLO PROVISIONAL',
+            'SIN UNIDAD',
+          ],
+          onChanged: (String? value) {
+            setState(() {
+              _repercusionFuncionamientoSeleccionada = value;
+              _repercusionFuncionamientoController.text = value ?? '';
+            });
+          },
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _estadoInstalacionController,
-          decoration: const InputDecoration(
-            labelText: 'Estado de la Instalación',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Estado de la Instalación',
+          hintText: 'Ingrese el estado de la instalación',
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _motivoIntervencionAfectacionController,
-          decoration: const InputDecoration(
-            labelText: 'Motivo de Intervención (AFECTACION)',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Motivo de Intervención (AFECTACION)',
+          hintText: 'Ingrese el motivo de intervención por afectación',
           maxLines: 2,
         ),
         const SizedBox(height: 16),
-        TextFormField(
-          controller: _atencionDanoController,
-          decoration: const InputDecoration(
-            labelText: 'Atención del Daño',
-            border: OutlineInputBorder(),
-          ),
+        _buildDropdownField(
+          label: 'Atención del Daño',
+          hintText: 'Seleccione la atención del daño',
+          value: _atencionDanoSeleccionada,
+          items: const [
+            'URGENTE',
+            'MAYOR',
+            'MENOR',
+          ],
+          onChanged: (String? value) {
+            setState(() {
+              _atencionDanoSeleccionada = value;
+              _atencionDanoController.text = value ?? '';
+            });
+          },
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _prioridadController,
-          decoration: const InputDecoration(
-            labelText: 'Prioridad',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Prioridad',
+          hintText: 'Ingrese la prioridad',
         ),
       ],
     );
@@ -608,35 +701,28 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
         Row(
           children: [
             Expanded(
-              child: TextFormField(
+              child: _buildFormField(
                 controller: _fechaController,
-                decoration: const InputDecoration(
-                  labelText: 'Fecha *',
-                  border: OutlineInputBorder(),
-                  hintText: 'YYYY-MM-DD',
-                  helperText: 'Dejar vacío para fecha actual',
-                ),
+                label: 'Fecha *',
+                hintText: 'Ingrese la fecha en formato YYYY-MM-DD (dejar vacío para fecha actual)',
+                helperText: 'Dejar vacío para fecha actual',
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: TextFormField(
+              child: _buildFormField(
                 controller: _prioridadController,
-                decoration: const InputDecoration(
-                  labelText: 'Prioridad',
-                  border: OutlineInputBorder(),
-                ),
+                label: 'Prioridad',
+                hintText: 'Ingrese la prioridad',
               ),
             ),
           ],
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _descripcionAvisoController,
-          decoration: const InputDecoration(
-            labelText: 'Descripción del Aviso *',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Descripción del Aviso *',
+          hintText: 'Ingrese la descripción del aviso',
           maxLines: 3,
           validator: (value) {
             if (value == null || value.isEmpty) {
@@ -649,109 +735,113 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
         Row(
           children: [
             Expanded(
-              child: TextFormField(
+              child: _buildFormField(
                 controller: _grupoPlanificadorController,
-                decoration: const InputDecoration(
-                  labelText: 'Grupo planificador',
-                  border: OutlineInputBorder(),
-                ),
+                label: 'Grupo planificador',
+                hintText: 'Ingrese el grupo planificador',
+                readOnly: true,
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: TextFormField(
+              child: _buildFormField(
                 controller: _puestoTrabajoResponsableController,
-                decoration: const InputDecoration(
-                  labelText: 'Puesto de trabajo responsable',
-                  border: OutlineInputBorder(),
-                ),
+                label: 'Puesto de trabajo responsable',
+                hintText: 'Ingrese el puesto de trabajo responsable',
+                readOnly: true,
               ),
             ),
           ],
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _autorAvisoController,
-          decoration: const InputDecoration(
-            labelText: 'Autor de aviso',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Autor de aviso',
+          hintText: 'Ingrese el autor del aviso',
+          readOnly: true,
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _motivoIntervencionController,
-          decoration: const InputDecoration(
-            labelText: 'Motivo de intervención',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Motivo de intervención',
+          hintText: 'Ingrese el motivo de intervención',
           maxLines: 2,
         ),
         const SizedBox(height: 16),
         Row(
           children: [
             Expanded(
-              child: TextFormField(
+              child: _buildFormField(
                 controller: _modeloDanoController,
-                decoration: const InputDecoration(
-                  labelText: 'Modelo del Daño',
-                  border: OutlineInputBorder(),
-                ),
+                label: 'Modelo del Daño',
+                hintText: 'Ingrese el modelo del daño',
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: TextFormField(
+              child: _buildFormField(
                 controller: _causaAveriaController,
-                decoration: const InputDecoration(
-                  labelText: 'Causa de la avería',
-                  border: OutlineInputBorder(),
-                ),
+                label: 'Causa de la avería',
+                hintText: 'Ingrese la causa de la avería',
                 maxLines: 2,
               ),
             ),
           ],
         ),
         const SizedBox(height: 16),
-        TextFormField(
-          controller: _repercusionFuncionamientoController,
-          decoration: const InputDecoration(
-            labelText: 'Repercusión en el funcionamiento',
-            border: OutlineInputBorder(),
-          ),
-          maxLines: 2,
+        _buildDropdownField(
+          label: 'Repercusión en el funcionamiento',
+          hintText: 'Seleccione la repercusión en el funcionamiento',
+          value: _repercusionFuncionamientoSeleccionada,
+          items: const [
+            'CON SUSTITUCION DE TARJETA',
+            'ARREGLO PROVISIONAL',
+            'SIN UNIDAD',
+          ],
+          onChanged: (String? value) {
+            setState(() {
+              _repercusionFuncionamientoSeleccionada = value;
+              _repercusionFuncionamientoController.text = value ?? '';
+            });
+          },
         ),
         const SizedBox(height: 16),
         Row(
           children: [
             Expanded(
-              child: TextFormField(
+              child: _buildFormField(
                 controller: _estadoInstalacionController,
-                decoration: const InputDecoration(
-                  labelText: 'Estado de la Instalación',
-                  border: OutlineInputBorder(),
-                ),
+                label: 'Estado de la Instalación',
+                hintText: 'Ingrese el estado de la instalación',
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: TextFormField(
+              child: _buildFormField(
                 controller: _motivoIntervencionAfectacionController,
-                decoration: const InputDecoration(
-                  labelText: 'Motivo de Intervención (AFECTACION)',
-                  border: OutlineInputBorder(),
-                ),
+                label: 'Motivo de Intervención (AFECTACION)',
+                hintText: 'Ingrese el motivo de intervención por afectación',
                 maxLines: 2,
               ),
             ),
           ],
         ),
         const SizedBox(height: 16),
-        TextFormField(
-          controller: _atencionDanoController,
-          decoration: const InputDecoration(
-            labelText: 'Atención del Daño',
-            border: OutlineInputBorder(),
-          ),
+        _buildDropdownField(
+          label: 'Atención del Daño',
+          hintText: 'Seleccione la atención del daño',
+          value: _atencionDanoSeleccionada,
+          items: const [
+            'URGENTE',
+            'MAYOR',
+            'MENOR',
+          ],
+          onChanged: (String? value) {
+            setState(() {
+              _atencionDanoSeleccionada = value;
+              _atencionDanoController.text = value ?? '';
+            });
+          },
         ),
       ],
     );
@@ -761,84 +851,81 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
   Widget _buildMobileFormSection2() {
     return Column(
       children: [
-        TextFormField(
+        _buildFormField(
           controller: _centroEmplazamientoController,
-          decoration: const InputDecoration(
-            labelText: 'Centro Emplazamiento',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Centro Emplazamiento',
+          hintText: 'Ingrese el centro de emplazamiento',
+          readOnly: true,
         ),
         const SizedBox(height: 16),
-        TextFormField(
-          controller: _areaEmpresaController,
-          decoration: const InputDecoration(
-            labelText: 'Área de empresa',
-            border: OutlineInputBorder(),
-          ),
+        _buildDropdownField(
+          label: 'Área de empresa',
+          hintText: 'Seleccione el área de empresa',
+          value: _areaEmpresaSeleccionada,
+          items: const [
+            'COM',
+            'PTAZ',
+            'CCE',
+            'RMO',
+            'RFO',
+          ],
+          onChanged: (String? value) {
+            setState(() {
+              _areaEmpresaSeleccionada = value;
+              _areaEmpresaController.text = value ?? '';
+            });
+          },
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _puestoTrabajoEmplazamientoController,
-          decoration: const InputDecoration(
-            labelText: 'Puesto trabajo de emplazamiento',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Puesto trabajo de emplazamiento',
+          hintText: 'Ingrese el puesto de trabajo de emplazamiento',
+          readOnly: true,
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _divisionController,
-          decoration: const InputDecoration(
-            labelText: 'División',
-            border: OutlineInputBorder(),
-          ),
+          label: 'División',
+          hintText: 'Ingrese la división',
+          readOnly: true,
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _estadoInstalacionLugarController,
-          decoration: const InputDecoration(
-            labelText: 'Estado de Instalación',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Estado de Instalación',
+          hintText: 'Ingrese el estado de instalación',
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _datosDisponiblesController,
-          decoration: const InputDecoration(
-            labelText: 'Datos disponibles',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Datos disponibles',
+          hintText: 'Ingrese los datos disponibles',
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _emplazamiento1Controller,
-          decoration: const InputDecoration(
-            labelText: 'Emplazamiento',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Emplazamiento',
+          hintText: 'Ingrese el emplazamiento',
+          readOnly: true,
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _emplazamiento2Controller,
-          decoration: const InputDecoration(
-            labelText: 'Emplazamiento',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Emplazamiento',
+          hintText: 'Ingrese el emplazamiento',
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _localController,
-          decoration: const InputDecoration(
-            labelText: 'Local',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Local',
+          hintText: 'Ingrese el local',
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _campoClasificacionController,
-          decoration: const InputDecoration(
-            labelText: 'Campo de clasificación',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Campo de clasificación',
+          hintText: 'Ingrese el campo de clasificación',
         ),
       ],
     );
@@ -851,22 +938,32 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
         Row(
           children: [
             Expanded(
-              child: TextFormField(
+              child: _buildFormField(
                 controller: _centroEmplazamientoController,
-                decoration: const InputDecoration(
-                  labelText: 'Centro Emplazamiento',
-                  border: OutlineInputBorder(),
-                ),
+                label: 'Centro Emplazamiento',
+                hintText: 'Ingrese el centro de emplazamiento',
+                readOnly: true,
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: TextFormField(
-                controller: _areaEmpresaController,
-                decoration: const InputDecoration(
-                  labelText: 'Área de empresa',
-                  border: OutlineInputBorder(),
-                ),
+              child: _buildDropdownField(
+                label: 'Área de empresa',
+                hintText: 'Seleccione el área de empresa',
+                value: _areaEmpresaSeleccionada,
+                items: const [
+                  'COM',
+                  'PTAZ',
+                  'CCE',
+                  'RMO',
+                  'RFO',
+                ],
+                onChanged: (String? value) {
+                  setState(() {
+                    _areaEmpresaSeleccionada = value;
+                    _areaEmpresaController.text = value ?? '';
+                  });
+                },
               ),
             ),
           ],
@@ -875,22 +972,20 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
         Row(
           children: [
             Expanded(
-              child: TextFormField(
+              child: _buildFormField(
                 controller: _puestoTrabajoEmplazamientoController,
-                decoration: const InputDecoration(
-                  labelText: 'Puesto trabajo de emplazamiento',
-                  border: OutlineInputBorder(),
-                ),
+                label: 'Puesto trabajo de emplazamiento',
+                hintText: 'Ingrese el puesto de trabajo de emplazamiento',
+                readOnly: true,
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: TextFormField(
+              child: _buildFormField(
                 controller: _divisionController,
-                decoration: const InputDecoration(
-                  labelText: 'División',
-                  border: OutlineInputBorder(),
-                ),
+                label: 'División',
+                hintText: 'Ingrese la división',
+                readOnly: true,
               ),
             ),
           ],
@@ -899,22 +994,18 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
         Row(
           children: [
             Expanded(
-              child: TextFormField(
+              child: _buildFormField(
                 controller: _estadoInstalacionLugarController,
-                decoration: const InputDecoration(
-                  labelText: 'Estado de Instalación',
-                  border: OutlineInputBorder(),
-                ),
+                label: 'Estado de Instalación',
+                hintText: 'Ingrese el estado de instalación',
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: TextFormField(
+              child: _buildFormField(
                 controller: _datosDisponiblesController,
-                decoration: const InputDecoration(
-                  labelText: 'Datos disponibles',
-                  border: OutlineInputBorder(),
-                ),
+                label: 'Datos disponibles',
+                hintText: 'Ingrese los datos disponibles',
               ),
             ),
           ],
@@ -923,22 +1014,18 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
         Row(
           children: [
             Expanded(
-              child: TextFormField(
+              child: _buildFormField(
                 controller: _emplazamiento1Controller,
-                decoration: const InputDecoration(
-                  labelText: 'Emplazamiento',
-                  border: OutlineInputBorder(),
-                ),
+                label: 'Emplazamiento',
+                hintText: 'Ingrese el emplazamiento',
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: TextFormField(
+              child: _buildFormField(
                 controller: _emplazamiento2Controller,
-                decoration: const InputDecoration(
-                  labelText: 'Emplazamiento',
-                  border: OutlineInputBorder(),
-                ),
+                label: 'Emplazamiento',
+                hintText: 'Ingrese el emplazamiento',
               ),
             ),
           ],
@@ -947,22 +1034,18 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
         Row(
           children: [
             Expanded(
-              child: TextFormField(
+              child: _buildFormField(
                 controller: _localController,
-                decoration: const InputDecoration(
-                  labelText: 'Local',
-                  border: OutlineInputBorder(),
-                ),
+                label: 'Local',
+                hintText: 'Ingrese el local',
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: TextFormField(
+              child: _buildFormField(
                 controller: _campoClasificacionController,
-                decoration: const InputDecoration(
-                  labelText: 'Campo de clasificación',
-                  border: OutlineInputBorder(),
-                ),
+                label: 'Campo de clasificación',
+                hintText: 'Ingrese el campo de clasificación',
               ),
             ),
           ],
@@ -975,20 +1058,16 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
   Widget _buildMobileFormSection3() {
     return Column(
       children: [
-        TextFormField(
+        _buildFormField(
           controller: _tipoUnidadDanadaController,
-          decoration: const InputDecoration(
-            labelText: 'Tipo',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Tipo',
+          hintText: 'Ingrese el tipo de unidad dañada',
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _noSerieUnidadDanadaController,
-          decoration: const InputDecoration(
-            labelText: 'No de serie',
-            border: OutlineInputBorder(),
-          ),
+          label: 'No de serie',
+          hintText: 'Ingrese el número de serie de la unidad dañada',
         ),
       ],
     );
@@ -999,22 +1078,18 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
     return Row(
       children: [
         Expanded(
-          child: TextFormField(
+          child: _buildFormField(
             controller: _tipoUnidadDanadaController,
-            decoration: const InputDecoration(
-              labelText: 'Tipo',
-              border: OutlineInputBorder(),
-            ),
+            label: 'Tipo',
+            hintText: 'Ingrese el tipo de unidad dañada',
           ),
         ),
         const SizedBox(width: 16),
         Expanded(
-          child: TextFormField(
+          child: _buildFormField(
             controller: _noSerieUnidadDanadaController,
-            decoration: const InputDecoration(
-              labelText: 'No de serie',
-              border: OutlineInputBorder(),
-            ),
+            label: 'No de serie',
+            hintText: 'Ingrese el número de serie de la unidad dañada',
           ),
         ),
       ],
@@ -1025,20 +1100,16 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
   Widget _buildMobileFormSection4() {
     return Column(
       children: [
-        TextFormField(
+        _buildFormField(
           controller: _tipoUnidadMontadaController,
-          decoration: const InputDecoration(
-            labelText: 'Tipo',
-            border: OutlineInputBorder(),
-          ),
+          label: 'Tipo',
+          hintText: 'Ingrese el tipo de unidad montada',
         ),
         const SizedBox(height: 16),
-        TextFormField(
+        _buildFormField(
           controller: _noSerieUnidadMontadaController,
-          decoration: const InputDecoration(
-            labelText: 'No de serie',
-            border: OutlineInputBorder(),
-          ),
+          label: 'No de serie',
+          hintText: 'Ingrese el número de serie de la unidad montada',
         ),
       ],
     );
@@ -1049,22 +1120,18 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
     return Row(
       children: [
         Expanded(
-          child: TextFormField(
+          child: _buildFormField(
             controller: _tipoUnidadMontadaController,
-            decoration: const InputDecoration(
-              labelText: 'Tipo',
-              border: OutlineInputBorder(),
-            ),
+            label: 'Tipo',
+            hintText: 'Ingrese el tipo de unidad montada',
           ),
         ),
         const SizedBox(width: 16),
         Expanded(
-          child: TextFormField(
+          child: _buildFormField(
             controller: _noSerieUnidadMontadaController,
-            decoration: const InputDecoration(
-              labelText: 'No de serie',
-              border: OutlineInputBorder(),
-            ),
+            label: 'No de serie',
+            hintText: 'Ingrese el número de serie de la unidad montada',
           ),
         ),
       ],

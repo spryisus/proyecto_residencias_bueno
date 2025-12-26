@@ -232,6 +232,10 @@ class _JumperCategoriesScreenState extends State<JumperCategoriesScreen> {
       // Obtener todos los productos de jumpers
       final inventario = await _inventarioRepository.getInventarioByCategoria(widget.categoria.idCategoria);
       
+      // Obtener contenedores para todos los productos de una vez (optimizado)
+      final idProductos = inventario.map((item) => item.producto.idProducto).toList();
+      final contenedoresMap = await _inventarioRepository.getContenedoresByProductos(idProductos);
+      
       // Preparar datos para exportación agrupados por categoría
       final itemsToExport = <Map<String, dynamic>>[];
       
@@ -246,12 +250,19 @@ class _JumperCategoriesScreenState extends State<JumperCategoriesScreen> {
 
         // Agregar cada producto de esta categoría
         for (final item in categoryItems) {
+          // Obtener contenedores de este producto
+          final contenedores = contenedoresMap[item.producto.idProducto] ?? [];
+
           itemsToExport.add({
             'tipo': category.displayName, // Tipo de conector (ej: SC-LC, FC-FC)
             'tamano': item.producto.tamano?.toString() ?? '',
             'cantidad': item.cantidad,
-            'rack': item.producto.rack ?? '',
-            'contenedor': item.producto.contenedor ?? '',
+            'rack': item.producto.rack ?? '', // Mantener para compatibilidad
+            'contenedor': item.producto.contenedor ?? '', // Mantener para compatibilidad
+            'contenedores': contenedores.map((c) => {
+              'rack': c.rack ?? '',
+              'contenedor': c.contenedor,
+            }).toList(),
           });
         }
       }

@@ -839,6 +839,10 @@ class _CompletedInventoryDetailScreenState extends State<CompletedInventoryDetai
             );
           }
 
+          // Obtener contenedores para todos los productos de una vez (optimizado)
+          final idProductos = _inventoryItems.map((item) => item.producto.idProducto).toList();
+          final contenedoresMap = await _inventarioRepository.getContenedoresByProductos(idProductos);
+
           // Preparar datos para exportación según plantilla
           final itemsToExport = _inventoryItems.map((item) {
             // Si el item está en la sesión, usar esa cantidad, si no, usar la original
@@ -846,12 +850,19 @@ class _CompletedInventoryDetailScreenState extends State<CompletedInventoryDetai
                 ? _sessionQuantities[item.producto.idProducto]!
                 : item.cantidad;
 
+            // Obtener contenedores de este producto
+            final contenedores = contenedoresMap[item.producto.idProducto] ?? [];
+
             return {
               'tipo': _getCategoryDisplayName(widget.session.categoryName), // Tipo (solo subcategoría si es jumper)
               'tamano': item.producto.tamano?.toString() ?? '',
               'cantidad': sessionQuantity,
-              'rack': item.producto.rack ?? '',
-              'contenedor': item.producto.contenedor ?? '',
+              'rack': item.producto.rack ?? '', // Mantener para compatibilidad
+              'contenedor': item.producto.contenedor ?? '', // Mantener para compatibilidad
+              'contenedores': contenedores.map((c) => {
+                'rack': c.rack ?? '',
+                'contenedor': c.contenedor,
+              }).toList(),
             };
           }).toList();
 

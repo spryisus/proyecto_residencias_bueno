@@ -64,3 +64,5 @@ Una vez ejecutado el script, la aplicación Flutter podrá:
 - Mostrar todos los contenedores de cada jumper
 - Gestionar cantidades por contenedor
 
+
+

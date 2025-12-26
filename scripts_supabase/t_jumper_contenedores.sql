@@ -68,3 +68,5 @@ FROM public.t_productos
 WHERE rack IS NOT NULL OR contenedor IS NOT NULL;
 */
 
+
+

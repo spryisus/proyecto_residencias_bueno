@@ -22,14 +22,18 @@ class JumpersExportService {
       }
 
       // Preparar los datos para el endpoint según la plantilla
-      // Columnas: B=TIPO, C=TAMAÑO, D=CANTIDAD, E=RACK, F=CONTENEDOR
+      // Columnas: B=TIPO, C=TAMAÑO, D=CANTIDAD, E=RACK, F=CONTENEDOR, UBICACION (nueva)
       final payload = {
-        'items': items.map((item) => {
-          'tipo': item['tipo'] ?? item['categoryName'] ?? '',
-          'tamano': item['tamano'] ?? item['size'] ?? '',
-          'cantidad': item['cantidad'] ?? item['quantity'] ?? 0,
-          'rack': item['rack'] ?? '',
-          'contenedor': item['contenedor'] ?? item['container'] ?? '',
+        'items': items.map((item) {
+          final contenedores = item['contenedores'] as List<dynamic>? ?? [];
+          return {
+            'tipo': item['tipo'] ?? item['categoryName'] ?? '',
+            'tamano': item['tamano'] ?? item['size'] ?? '',
+            'cantidad': item['cantidad'] ?? item['quantity'] ?? 0,
+            'rack': item['rack'] ?? '', // Mantener para compatibilidad
+            'contenedor': item['contenedor'] ?? item['container'] ?? '', // Mantener para compatibilidad
+            'contenedores': contenedores, // Lista de contenedores múltiples
+          };
         }).toList(),
       };
 
