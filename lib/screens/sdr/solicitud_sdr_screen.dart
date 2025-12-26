@@ -219,11 +219,9 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
 
   void _limpiarFormulario() {
     setState(() {
+      // Limpiar campos editables
       _fechaController.clear();
       _descripcionAvisoController.clear();
-      _grupoPlanificadorController.clear();
-      _puestoTrabajoResponsableController.clear();
-      _autorAvisoController.clear();
       _motivoIntervencionController.clear();
       _modeloDanoController.clear();
       _causaAveriaController.clear();
@@ -234,14 +232,10 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
       _atencionDanoController.clear();
       _atencionDanoSeleccionada = null;
       _prioridadController.clear();
-      _centroEmplazamientoController.clear();
       _areaEmpresaController.clear();
       _areaEmpresaSeleccionada = null;
-      _puestoTrabajoEmplazamientoController.clear();
-      _divisionController.clear();
       _estadoInstalacionLugarController.clear();
       _datosDisponiblesController.clear();
-      _emplazamiento1Controller.clear();
       _emplazamiento2Controller.clear();
       _localController.clear();
       _campoClasificacionController.clear();
@@ -249,6 +243,15 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
       _noSerieUnidadDanadaController.clear();
       _tipoUnidadMontadaController.clear();
       _noSerieUnidadMontadaController.clear();
+      
+      // Restaurar valores fijos (NO limpiar estos campos)
+      _grupoPlanificadorController.text = 'LD. 70';
+      _puestoTrabajoResponsableController.text = 'PTAZ POZA RICA';
+      _autorAvisoController.text = '0117';
+      _centroEmplazamientoController.text = 'LDTX';
+      _puestoTrabajoEmplazamientoController.text = 'COM-PUE';
+      _divisionController.text = '70';
+      _emplazamiento1Controller.text = 'PTAZ PORZA RICA';
     });
   }
 
@@ -598,11 +601,28 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
           items: items.map((String item) {
             return DropdownMenuItem<String>(
               value: item,
-              child: Text(item),
+              child: Text(
+                item,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
             );
           }).toList(),
           onChanged: onChanged,
           validator: validator,
+          isExpanded: true,
+          selectedItemBuilder: (BuildContext context) {
+            return items.map((String item) {
+              return Text(
+                item,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                style: const TextStyle(
+                  overflow: TextOverflow.ellipsis,
+                ),
+              );
+            }).toList();
+          },
         ),
       ],
     );

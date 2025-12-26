@@ -65,24 +65,28 @@ class ExcelServiceConfig {
           if (_isAndroidEmulator()) {
             return androidEmulatorUrl;
           }
-          // Dispositivo físico: usar URL local o producción
-          return const String.fromEnvironment(
-            'EXCEL_SERVICE_URL',
-            defaultValue: localUrl,
-          );
+          // Dispositivo físico: usar producción por defecto (puedes cambiar con variable de entorno)
+          const envUrl = String.fromEnvironment('EXCEL_SERVICE_URL');
+          if (envUrl.isNotEmpty) {
+            return envUrl;
+          }
+          // Si no hay variable de entorno, usar producción
+          return productionUrl;
         } else if (Platform.isIOS) {
-          // iOS: usar URL local o producción
-          return const String.fromEnvironment(
-            'EXCEL_SERVICE_URL',
-            defaultValue: localUrl,
-          );
+          // iOS: usar producción por defecto (puedes cambiar con variable de entorno)
+          const envUrl = String.fromEnvironment('EXCEL_SERVICE_URL');
+          if (envUrl.isNotEmpty) {
+            return envUrl;
+          }
+          // Si no hay variable de entorno, usar producción
+          return productionUrl;
         } else {
           // Desktop (Windows, Linux, macOS): usar localhost
           return 'http://localhost:8001';
         }
       } catch (e) {
-        // Si hay error, usar localhost como fallback
-        return 'http://localhost:8001';
+        // Si hay error, usar producción como fallback
+        return productionUrl;
       }
     }
   }
