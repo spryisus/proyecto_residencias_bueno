@@ -17,7 +17,7 @@ class ExcelServiceConfig {
   /// - Render.com: 'https://excel-generator-service.onrender.com'
   /// - Railway.app: 'https://excel-generator-service.railway.app'
   /// - Fly.io: 'https://excel-generator-service.fly.dev'
-  static const String productionUrl = 'https://excel-generator-service.onrender.com';
+  static const String productionUrl = 'https://generador-excel.onrender.com';
   
   /// URL local para desarrollo (IP de tu computadora en la red local)
   /// NOTA: Actualiza esta IP si cambias de red
@@ -50,11 +50,13 @@ class ExcelServiceConfig {
     
     // Detección automática según la plataforma
     if (kIsWeb) {
-      // Web: usar localhost o producción según configuración
-      return const String.fromEnvironment(
-        'EXCEL_SERVICE_URL',
-        defaultValue: 'http://localhost:8001',
-      );
+      // Web: usar producción por defecto (puedes cambiar con variable de entorno para desarrollo)
+      const envUrl = String.fromEnvironment('EXCEL_SERVICE_URL');
+      if (envUrl.isNotEmpty) {
+        return envUrl;
+      }
+      // Si no hay variable de entorno, usar producción
+      return productionUrl;
     } else {
       // Móvil o desktop
       try {

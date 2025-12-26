@@ -260,42 +260,77 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
       setState(() {
         try {
           // Datos de Falla de aviso (basados en ejemplo real)
-          _fechaController.text = '2025-09-05';
-          _descripcionAvisoController.text = 'FALLA DE RECTIFICADOR (RECTIFIER FAILURE)';
-          _grupoPlanificadorController.text = 'LD. 70';
-          _puestoTrabajoResponsableController.text = 'PTAZ O&M L.D.';
-          _autorAvisoController.text = '719964';
-          _motivoIntervencionController.text = 'RECTIFICADOR DAÑADO (DAMAGED RECTIFIER)';
-          _modeloDanoController.text = 'EN OPERACIÓN (IN OPERATION)';
-          _causaAveriaController.text = 'FAN FAIL';
-          _repercusionFuncionamientoSeleccionada = 'CON SUSTITUCION DE TARJETA';
-          _repercusionFuncionamientoController.text = 'CON SUSTITUCION DE TARJETA';
-          _estadoInstalacionController.text = 'NA';
-          _motivoIntervencionAfectacionController.text = 'SIN AFECTACION (NO AFFECTATION)';
-          _atencionDanoSeleccionada = 'MENOR';
-          _atencionDanoController.text = 'MENOR';
-          _prioridadController.text = 'MENOR (MINOR)';
+          // Solo llenar campos vacíos, no sobrescribir valores fijos
+          if (_fechaController.text.isEmpty) {
+            _fechaController.text = '2025-09-05';
+          }
+          if (_descripcionAvisoController.text.isEmpty) {
+            _descripcionAvisoController.text = 'FALLA DE RECTIFICADOR (RECTIFIER FAILURE)';
+          }
+          // NO llenar campos fijos: _grupoPlanificadorController, _puestoTrabajoResponsableController, _autorAvisoController
+          if (_motivoIntervencionController.text.isEmpty) {
+            _motivoIntervencionController.text = 'RECTIFICADOR DAÑADO (DAMAGED RECTIFIER)';
+          }
+          if (_modeloDanoController.text.isEmpty) {
+            _modeloDanoController.text = 'EN OPERACIÓN (IN OPERATION)';
+          }
+          if (_causaAveriaController.text.isEmpty) {
+            _causaAveriaController.text = 'FAN FAIL';
+          }
+          if (_repercusionFuncionamientoSeleccionada == null || _repercusionFuncionamientoController.text.isEmpty) {
+            _repercusionFuncionamientoSeleccionada = 'CON SUSTITUCION DE TARJETA';
+            _repercusionFuncionamientoController.text = 'CON SUSTITUCION DE TARJETA';
+          }
+          if (_estadoInstalacionController.text.isEmpty) {
+            _estadoInstalacionController.text = 'NA';
+          }
+          if (_motivoIntervencionAfectacionController.text.isEmpty) {
+            _motivoIntervencionAfectacionController.text = 'SIN AFECTACION (NO AFFECTATION)';
+          }
+          if (_atencionDanoSeleccionada == null || _atencionDanoController.text.isEmpty) {
+            _atencionDanoSeleccionada = 'MENOR';
+            _atencionDanoController.text = 'MENOR';
+          }
+          if (_prioridadController.text.isEmpty) {
+            _prioridadController.text = 'MENOR (MINOR)';
+          }
           
           // Lugar del Daño
-          _centroEmplazamientoController.text = 'LDTX';
-          _areaEmpresaSeleccionada = 'PTAZ';
-          _areaEmpresaController.text = 'PTAZ';
-          _puestoTrabajoEmplazamientoController.text = 'COM-PUE';
-          _divisionController.text = '70';
-          _estadoInstalacionLugarController.text = 'CON SUSTITUCION DE RECTIFICADOR (WITH RECTIFIER REPLACEMENT)';
-          _datosDisponiblesController.text = 'REGRESA A POZA RICA (RETURNS TO POZA RICA)';
-          _emplazamiento1Controller.text = 'PTAZ POZA RICA';
-          _emplazamiento2Controller.text = 'PTAZ POZA RICA';
-          _localController.text = 'SIN TIN';
-          _campoClasificacionController.text = '';
+          // NO llenar campos fijos: _centroEmplazamientoController, _puestoTrabajoEmplazamientoController, _divisionController
+          if (_areaEmpresaSeleccionada == null || _areaEmpresaController.text.isEmpty) {
+            _areaEmpresaSeleccionada = 'PTAZ';
+            _areaEmpresaController.text = 'PTAZ';
+          }
+          if (_estadoInstalacionLugarController.text.isEmpty) {
+            _estadoInstalacionLugarController.text = 'CON SUSTITUCION DE RECTIFICADOR (WITH RECTIFIER REPLACEMENT)';
+          }
+          if (_datosDisponiblesController.text.isEmpty) {
+            _datosDisponiblesController.text = 'REGRESA A POZA RICA (RETURNS TO POZA RICA)';
+          }
+          // NO llenar campo fijo: _emplazamiento1Controller
+          if (_emplazamiento2Controller.text.isEmpty) {
+            _emplazamiento2Controller.text = 'PTAZ POZA RICA';
+          }
+          if (_localController.text.isEmpty) {
+            _localController.text = 'SIN TIN';
+          }
+          // _campoClasificacionController se deja vacío intencionalmente
           
           // Datos de la unidad Dañada
-          _tipoUnidadDanadaController.text = 'CORDEX HP 48 4KW / 010623-20-XXX';
-          _noSerieUnidadDanadaController.text = '201037364 / 0516';
+          if (_tipoUnidadDanadaController.text.isEmpty) {
+            _tipoUnidadDanadaController.text = 'CORDEX HP 48 4KW / 010623-20-XXX';
+          }
+          if (_noSerieUnidadDanadaController.text.isEmpty) {
+            _noSerieUnidadDanadaController.text = '201037364 / 0516';
+          }
           
           // Datos de la unidad que se montó
-          _tipoUnidadMontadaController.text = 'CORDEX HP 48 4KW /010623-20-XXX';
-          _noSerieUnidadMontadaController.text = '201105450/0821';
+          if (_tipoUnidadMontadaController.text.isEmpty) {
+            _tipoUnidadMontadaController.text = 'CORDEX HP 48 4KW /010623-20-XXX';
+          }
+          if (_noSerieUnidadMontadaController.text.isEmpty) {
+            _noSerieUnidadMontadaController.text = '201105450/0821';
+          }
         } catch (e) {
           // Si hay un error, mostrar mensaje pero no fallar
           if (mounted) {

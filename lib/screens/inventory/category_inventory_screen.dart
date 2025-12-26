@@ -195,14 +195,17 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
       }).toList();
     }
 
-    // Ordenar por contenedor si está seleccionado
+    // Ordenar por tamaño si está seleccionado
     if (_sortOrder != SortOrder.none) {
       filtered = List.from(filtered);
       filtered.sort((a, b) {
-        final ubicacionA = _buildRackContenedorText(a.producto.rack, a.producto.contenedor);
-        final ubicacionB = _buildRackContenedorText(b.producto.rack, b.producto.contenedor);
+        // Obtener tamaños (pueden ser null)
+        final tamanoA = a.producto.tamano ?? 0;
+        final tamanoB = b.producto.tamano ?? 0;
         
-        final comparison = ubicacionA.compareTo(ubicacionB);
+        // Comparar numéricamente
+        final comparison = tamanoA.compareTo(tamanoB);
+        // ascending = menor a mayor, descending = mayor a menor
         return _sortOrder == SortOrder.ascending ? comparison : -comparison;
       });
     }
@@ -972,7 +975,7 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
                       children: [
                         Icon(Icons.sort, size: 20, color: Theme.of(context).colorScheme.primary),
                         Text(
-                          'Ordenar por contenedor:',
+                          'Ordenar por tamaño:',
                           style: TextStyle(
                             fontSize: isMobile ? 12 : 14,
                             fontWeight: FontWeight.w600,
@@ -1003,7 +1006,7 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
                                   children: [
                                     Icon(Icons.arrow_upward, size: 16, color: Theme.of(context).colorScheme.onSurface),
                                     const SizedBox(width: 4),
-                                    Text('A-Z', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
+                                    Text('Menor a Mayor', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
                                   ],
                                 ),
                               ),
@@ -1014,7 +1017,7 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
                                   children: [
                                     Icon(Icons.arrow_downward, size: 16, color: Theme.of(context).colorScheme.onSurface),
                                     const SizedBox(width: 4),
-                                    Text('Z-A', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
+                                    Text('Mayor a Menor', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
                                   ],
                                 ),
                               ),
