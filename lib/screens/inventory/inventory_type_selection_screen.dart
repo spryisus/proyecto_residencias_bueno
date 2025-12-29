@@ -10,6 +10,7 @@ import 'jumper_categories_screen.dart';
 import 'qr_scanner_screen.dart';
 import 'completed_inventories_screen.dart';
 import '../computo/inventario_computo_screen.dart';
+import '../sicor/inventario_tarjetas_red_screen.dart';
 
 class InventoryTypeSelectionScreen extends StatefulWidget {
   const InventoryTypeSelectionScreen({super.key});
@@ -79,9 +80,8 @@ class _InventoryTypeSelectionScreenState extends State<InventoryTypeSelectionScr
           // Mapear a los nombres de las tarjetas
           if (nombreCategoria.contains('jumper')) {
             countMap['Jumpers'] = cantidad;
-          } else if (nombreCategoria.contains('medición') || nombreCategoria.contains('medicion')) {
-            countMap['Equipo de Medición'] = cantidad;
           }
+          // Nota: SICOR se cuenta directamente desde t_tarjetas_red más abajo
         } catch (e) {
           // Si hay error al obtener una categoría, continuar con las demás
           debugPrint('Error al contar productos de categoría ${categoria.nombre}: $e');
@@ -97,6 +97,17 @@ class _InventoryTypeSelectionScreenState extends State<InventoryTypeSelectionScr
       } catch (e) {
         debugPrint('Error al contar equipos de cómputo: $e');
         countMap['Equipo de Cómputo'] = 0;
+      }
+
+      // Contar tarjetas de red (SICOR) directamente desde t_tarjetas_red
+      try {
+        final tarjetasRed = await supabaseClient
+            .from('t_tarjetas_red')
+            .select('id_tarjeta_red');
+        countMap['SICOR'] = tarjetasRed.length;
+      } catch (e) {
+        debugPrint('Error al contar tarjetas de red: $e');
+        countMap['SICOR'] = 0;
       }
 
       var sessions = await _sessionStorage.getAllSessions();
@@ -155,8 +166,9 @@ class _InventoryTypeSelectionScreenState extends State<InventoryTypeSelectionScr
         if (searchTerm.contains('computo')) 'computo',
         if (searchTerm.contains('medición')) 'medición',
         if (searchTerm.contains('medicion')) 'medicion',
-        if (searchTerm.contains('medición')) 'equipos de medición',
-        if (searchTerm.contains('medicion')) 'equipos de medicion',
+        if (searchTerm.contains('sicor')) 'sicor',
+        if (searchTerm.contains('medición')) 'sicor',
+        if (searchTerm.contains('medicion')) 'sicor',
       ];
 
       for (final variation in searchVariations) {
@@ -211,6 +223,15 @@ class _InventoryTypeSelectionScreenState extends State<InventoryTypeSelectionScr
           context,
           MaterialPageRoute(
             builder: (_) => const InventarioComputoScreen(),
+          ),
+        );
+      } else if (categoryName.toLowerCase().contains('sicor') || 
+                 searchTerm.toLowerCase().contains('sicor')) {
+        // Para SICOR (Tarjetas de Red), navegar a la pantalla específica de tarjetas de red
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const InventarioTarjetasRedScreen(),
           ),
         );
       } else {
@@ -319,12 +340,12 @@ class _InventoryTypeSelectionScreenState extends State<InventoryTypeSelectionScr
                         ),
                         const SizedBox(height: 16),
                         _buildInventoryTypeCard(
-                          title: 'Equipo de Medición',
-                          description: 'Equipos de medición y herramientas de diagnóstico',
+                          title: 'SICOR',
+                          description: 'Tarjetas de red',
                           icon: Icons.straighten,
                           color: Colors.green,
-                          productCount: _categoryCounts['Equipo de Medición'] ?? 0,
-                          onTap: () => _navigateToCategory('Equipo de Medición', 'medición'),
+                          productCount: _categoryCounts['SICOR'] ?? 0,
+                          onTap: () => _navigateToCategory('SICOR', 'sicor'),
                         ),
                         const SizedBox(height: 32),
                         _buildCompletedInventoriesCard(isMobile),

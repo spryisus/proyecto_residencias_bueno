@@ -56,6 +56,16 @@ TEMPLATE_PATH_SDR = (
     if os.path.exists(os.path.join(TEMPLATES_DIR, "plantilla_sdr.xlsx"))
     else os.path.join(PROJECT_ASSETS_DIR, "plantilla_SDR.xlsx")
 )
+# SICOR: buscar primero en templates del servicio, luego en assets del proyecto
+TEMPLATE_PATH_SICOR = (
+    os.path.join(TEMPLATES_DIR, "plantilla_sicor.xlsx")
+    if os.path.exists(os.path.join(TEMPLATES_DIR, "plantilla_sicor.xlsx"))
+    else (
+        os.path.join(PROJECT_ASSETS_DIR, "templates", "plantilla_sicor.xlsx")
+        if os.path.exists(os.path.join(PROJECT_ASSETS_DIR, "templates", "plantilla_sicor.xlsx"))
+        else os.path.join(PROJECT_ASSETS_DIR, "plantilla_sicor.xlsx")
+    )
+)
 
 LAST_GENERATED_FILE_CONTENT: bytes | None = None
 LAST_GENERATED_FILENAME: str | None = None
@@ -780,6 +790,187 @@ async def generate_sdr_excel(request: Request):
 
     except Exception as e:
         logger.exception("Error generating SDR excel")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/generate-sicor-excel")
+async def generate_sicor_excel(request: Request):
+    payload = await request.json()
+    items: List[Dict[str, Any]] = payload.get("items") or []
+    if not isinstance(items, list) or len(items) == 0:
+        raise HTTPException(status_code=400, detail="items must be a non-empty list")
+
+    try:
+        # Usar plantilla si existe
+        if _ensure_template(TEMPLATE_PATH_SICOR):
+            logger.info(f"📄 Usando plantilla: {TEMPLATE_PATH_SICOR}")
+            wb = openpyxl.load_workbook(TEMPLATE_PATH_SICOR)
+            ws = wb.active
+            
+            # Los datos empiezan en la fila 5, columna B (columna 2)
+            start_row = 5
+            start_col = 2  # Columna B
+            
+            # Buscar la primera fila vacía desde la fila 5
+            while ws.cell(row=start_row, column=start_col).value is not None:
+                start_row += 1
+            
+            logger.info(f"📝 Escribiendo {len(items)} tarjetas desde la fila {start_row}, columna {start_col}")
+            
+            # Obtener el formato de la fila 5 (fila de referencia) si existe
+            reference_row = 5
+            reference_cells = {}
+            for col in range(start_col, start_col + 7):  # 7 columnas: B-H
+                ref_cell = ws.cell(row=reference_row, column=col)
+                reference_cells[col] = {
+                    'font': ref_cell.font.copy() if ref_cell.font else None,
+                    'fill': ref_cell.fill.copy() if ref_cell.fill else None,
+                    'border': ref_cell.border.copy() if ref_cell.border else None,
+                    'alignment': ref_cell.alignment.copy() if ref_cell.alignment else None,
+                    'number_format': ref_cell.number_format,
+                }
+            
+            # Escribir cada tarjeta en una fila usando función segura y copiando formato
+            for idx, item in enumerate(items, start=0):
+                row = start_row + idx
+                en_stock = str(item.get("en_stock", "SI")).upper().strip()
+                is_no_stock = en_stock == "NO"
+                
+                # Mapear campos según la plantilla (empezando en columna B)
+                # Col B (2): EN STOCK -> en_stock
+                _safe_set_cell_value(ws, row, 2, en_stock)
+                # Col C (3): No. -> numero
+                _safe_set_cell_value(ws, row, 3, item.get("numero", ""))
+                # Col D (4): CODIGO -> codigo
+                _safe_set_cell_value(ws, row, 4, item.get("codigo", ""))
+                # Col E (5): SERIE -> serie
+                _safe_set_cell_value(ws, row, 5, item.get("serie", ""))
+                # Col F (6): MARCA -> marca
+                _safe_set_cell_value(ws, row, 6, item.get("marca", ""))
+                # Col G (7): POSICION -> posicion
+                _safe_set_cell_value(ws, row, 7, item.get("posicion", ""))
+                # Col H (8): COMENTARIOS -> comentarios
+                _safe_set_cell_value(ws, row, 8, item.get("comentarios", ""))
+                
+                # Aplicar formato de la fila 5 a cada celda
+                for col in range(start_col, start_col + 7):
+                    cell = ws.cell(row=row, column=col)
+                    ref_format = reference_cells.get(col, {})
+                    
+                    # Si NO está en stock, aplicar fondo rojo a toda la fila
+                    if is_no_stock:
+                        # Fondo rojo para toda la fila
+                        cell.fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+                        
+                        # Texto blanco para columnas B (en_stock) y C (numero)
+                        if col == 2 or col == 3:  # Columnas B y C
+                            ref_font = ref_format.get('font')
+                            cell.font = Font(
+                                color="FFFFFF",  # Blanco
+                                bold=ref_font.bold if ref_font else False,
+                                size=ref_font.size if ref_font else 11
+                            )
+                        else:
+                            # Para otras columnas, mantener el formato original pero con fondo rojo
+                            if ref_format.get('font'):
+                                ref_font = ref_format['font']
+                                font_copy = Font(
+                                    color=ref_font.color if ref_font.color else "000000",
+                                    bold=ref_font.bold if ref_font.bold is not None else False,
+                                    size=ref_font.size if ref_font.size else 11
+                                )
+                                cell.font = font_copy
+                    else:
+                        # Si está en stock, aplicar formato normal
+                        if ref_format.get('font'):
+                            cell.font = ref_format['font']
+                        if ref_format.get('fill'):
+                            cell.fill = ref_format['fill']
+                        
+                        # Columna D (CODIGO) con fondo azul #558ED5 cuando está en stock
+                        if col == 4:  # Columna D (CODIGO)
+                            cell.fill = PatternFill(start_color="558ED5", end_color="558ED5", fill_type="solid")
+                    
+                    # Aplicar otros formatos (border, alignment, number_format) siempre
+                    if ref_format.get('border'):
+                        cell.border = ref_format['border']
+                    if ref_format.get('alignment'):
+                        cell.alignment = ref_format['alignment']
+                    if ref_format.get('number_format'):
+                        cell.number_format = ref_format['number_format']
+        else:
+            # Si no hay plantilla, crear estructura básica
+            logger.warning("No se encontró plantilla SICOR, creando estructura básica")
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Inventario SICOR"
+            
+            # Título
+            title_cell = ws.cell(row=1, column=2, value=f'INVENTARIO SICOR {_get_month_year()}')
+            title_cell.font = Font(bold=True, size=14)
+            title_cell.alignment = Alignment(horizontal='center', vertical='center')
+            
+            # Encabezados (fila 4)
+            headers = ['EN STOCK', 'No.', 'CODIGO', 'SERIE', 'MARCA', 'POSICION', 'COMENTARIOS']
+            for idx, header in enumerate(headers, start=2):
+                cell = ws.cell(row=4, column=idx, value=header)
+                _apply_cell_style(cell, bold=True, center=True)
+            
+            # Datos (fila 5 en adelante)
+            for idx, item in enumerate(items, start=0):
+                row = 5 + idx
+                en_stock = str(item.get("en_stock", "SI")).upper().strip()
+                is_no_stock = en_stock == "NO"
+                
+                ws.cell(row=row, column=2, value=en_stock)
+                ws.cell(row=row, column=3, value=item.get("numero", ""))
+                ws.cell(row=row, column=4, value=item.get("codigo", ""))
+                ws.cell(row=row, column=5, value=item.get("serie", ""))
+                ws.cell(row=row, column=6, value=item.get("marca", ""))
+                ws.cell(row=row, column=7, value=item.get("posicion", ""))
+                ws.cell(row=row, column=8, value=item.get("comentarios", ""))
+                
+                # Aplicar estilo
+                for col in range(2, 9):
+                    cell = ws.cell(row=row, column=col)
+                    
+                    # Si NO está en stock, aplicar fondo rojo a toda la fila
+                    if is_no_stock:
+                        # Fondo rojo para toda la fila
+                        cell.fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+                        
+                        # Texto blanco para columnas B (en_stock) y C (numero)
+                        if col == 2 or col == 3:  # Columnas B y C
+                            cell.font = Font(color="FFFFFF", bold=False, size=11)
+                        else:
+                            # Para otras columnas, mantener texto normal pero con fondo rojo
+                            cell.font = Font(color="000000", bold=False, size=11)
+                    else:
+                        # Si está en stock, aplicar estilo normal
+                        _apply_cell_style(cell, bold=False, center=True)
+                        
+                        # Columna D (CODIGO) con fondo azul #558ED5 cuando está en stock
+                        if col == 4:  # Columna D (CODIGO)
+                            cell.fill = PatternFill(start_color="558ED5", end_color="558ED5", fill_type="solid")
+
+        file_bytes = _save_workbook_to_bytes(wb)
+        if not file_bytes:
+            raise RuntimeError("Generated file is empty")
+
+        global LAST_GENERATED_FILE_CONTENT, LAST_GENERATED_FILENAME
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        filename = f"inventario_sicor_{timestamp}.xlsx"
+        LAST_GENERATED_FILE_CONTENT = file_bytes
+        LAST_GENERATED_FILENAME = filename
+
+        logger.info(f"📦 Tamaño del archivo generado: {len(file_bytes)} bytes")
+
+        return Response(content=file_bytes,
+                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f"attachment; filename=\"{filename}\""})
+
+    except Exception as e:
+        logger.exception("Error generating SICOR excel")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -14,6 +14,7 @@ import 'completed_inventory_detail_screen.dart';
 import 'category_inventory_screen.dart';
 import 'jumper_categories_screen.dart' show JumperCategories, JumperCategory, JumperCategoriesScreen;
 import '../computo/inventario_computo_screen.dart';
+import '../sicor/inventario_tarjetas_red_screen.dart';
 import '../../domain/entities/categoria.dart';
 import '../../data/services/computo_export_service.dart';
 import '../../data/services/jumpers_export_service.dart';
@@ -117,8 +118,8 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
           return categoryLower.contains('jumper');
         } else if (_categoryFilter == 'Equipo de Cómputo') {
           return categoryLower.contains('comput') || categoryLower.contains('cómputo') || categoryLower.contains('computo');
-        } else if (_categoryFilter == 'Equipo de Medición') {
-          return categoryLower.contains('medición') || categoryLower.contains('medicion');
+        } else if (_categoryFilter == 'SICOR') {
+          return categoryLower.contains('medición') || categoryLower.contains('medicion') || categoryLower.contains('sicor');
         }
         return true;
       }).toList();
@@ -213,12 +214,78 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
   }
 
   Future<void> _viewInventory(InventorySession session) async {
+    // Log inmediato al inicio, antes de cualquier cosa
+    print('🚨🚨🚨 _viewInventory LLAMADO 🚨🚨🚨');
+    print('🚨 session.id: ${session.id}');
+    print('🚨 session.categoryName: "${session.categoryName}"');
+    print('🚨 session.categoryId: ${session.categoryId}');
+    print('🚨 session.status: ${session.status}');
+    debugPrint('🔍 _viewInventory llamado:');
+    debugPrint('   - session.id: ${session.id}');
+    debugPrint('   - session.categoryName: ${session.categoryName}');
+    debugPrint('   - session.categoryId: ${session.categoryId}');
+    debugPrint('   - session.status: ${session.status}');
+    
     try {
+      
+      // PRIMERO: Verificar si es SICOR (antes que cómputo)
+      final categoryNameLower = session.categoryName.toLowerCase().trim();
+      print('🚨 Verificando SICOR:');
+      print('   - categoryNameLower: "$categoryNameLower"');
+      print('   - contains sicor: ${categoryNameLower.contains('sicor')}');
+      print('   - contains medición: ${categoryNameLower.contains('medición')}');
+      print('   - contains medicion: ${categoryNameLower.contains('medicion')}');
+      
+      final isSicor = categoryNameLower.contains('sicor') || 
+                     categoryNameLower.contains('medición') || 
+                     categoryNameLower.contains('medicion');
+      
+      print('   - isSicor: $isSicor');
+      
+      if (isSicor) {
+        debugPrint('✅ SICOR detectado en _viewInventory');
+        if (session.status == InventorySessionStatus.pending) {
+          debugPrint('✅ Redirigiendo a InventarioTarjetasRedScreen (SICOR pendiente)');
+          if (!mounted) return;
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => InventarioTarjetasRedScreen(
+                sessionId: session.id,
+              ),
+            ),
+          );
+        } else {
+          debugPrint('⚠️ SICOR completado, mostrando detalles');
+          // Para SICOR completado, necesitamos obtener la categoría
+          if (session.categoryId > 0) {
+            final categoria = await _inventarioRepository.getCategoriaById(session.categoryId);
+            if (categoria != null && mounted) {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => CompletedInventoryDetailScreen(
+                    session: session,
+                    categoria: categoria,
+                  ),
+                ),
+              );
+            }
+          }
+        }
+        
+        // Recargar sesiones al volver
+        if (mounted) {
+          _loadAllSessions();
+        }
+        return;
+      }
+      
       // Manejo especial para "Equipo de Cómputo" que no tiene categoría en la BD
       // Verificar por categoryId primero (más confiable)
       final isComputo = session.categoryId == -1 || 
-                       session.categoryName.toLowerCase().trim().contains('comput') ||
-                       session.categoryName.toLowerCase().trim().contains('cómputo');
+                       categoryNameLower.contains('comput') ||
+                       categoryNameLower.contains('cómputo');
       
       if (isComputo) {
         if (session.status == InventorySessionStatus.pending) {
@@ -284,11 +351,29 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
         return;
       }
 
+      // Verificar si es SICOR antes de continuar (tanto por nombre como por ID de categoría)
+      final categoriaNombreLower = categoria.nombre.toLowerCase().trim();
+      final isSicorFromCategoria = categoryNameLower.contains('sicor') || 
+                                   categoryNameLower.contains('medición') || 
+                                   categoryNameLower.contains('medicion') ||
+                                   categoriaNombreLower.contains('sicor') ||
+                                   categoriaNombreLower.contains('medición') ||
+                                   categoriaNombreLower.contains('medicion');
+
       // Si la sesión está pendiente, redirigir al inventario para continuarlo
       if (session.status == InventorySessionStatus.pending) {
+        // Debug: imprimir información de la sesión
+        debugPrint('🔍 Sesión pendiente detectada (después de obtener categoría):');
+        debugPrint('   - categoryName: ${session.categoryName}');
+        debugPrint('   - categoryNameLower: $categoryNameLower');
+        debugPrint('   - categoryId: ${session.categoryId}');
+        debugPrint('   - categoria.nombre: ${categoria.nombre}');
+        debugPrint('   - categoriaNombreLower: $categoriaNombreLower');
+        debugPrint('   - isSicorFromCategoria: $isSicorFromCategoria');
+        
         // Verificar si es inventario de cómputo
-        final categoryNameLower = session.categoryName.toLowerCase();
         if (session.categoryId == -1 || categoryNameLower.contains('comput')) {
+          debugPrint('✅ Redirigiendo a InventarioComputoScreen');
           // Navegar directamente a la pantalla de inventario de cómputo
           await Navigator.push(
             context,
@@ -296,7 +381,22 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
               builder: (_) => const InventarioComputoScreen(),
             ),
           );
-        } else {
+        } 
+        // Verificar si es SICOR (tarjetas de red)
+        else if (isSicorFromCategoria) {
+          debugPrint('✅ Redirigiendo a InventarioTarjetasRedScreen (SICOR)');
+          // Navegar directamente a la pantalla de inventario de tarjetas de red (SICOR)
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => InventarioTarjetasRedScreen(
+                sessionId: session.id,
+              ),
+            ),
+          );
+        } 
+        else {
+          debugPrint('⚠️ No se detectó categoría especial, usando _openPendingSession');
           await _openPendingSession(session, categoria);
         }
       } else {
@@ -331,8 +431,38 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
 
   Future<void> _openPendingSession(InventorySession session, categoria) async {
     try {
+      debugPrint('🔍 _openPendingSession llamado:');
+      debugPrint('   - session.categoryName: ${session.categoryName}');
+      debugPrint('   - categoria.nombre: ${categoria.nombre}');
+      
       // Verificar si es Jumpers y si tiene subcategoría en el nombre
       final categoryNameLower = session.categoryName.toLowerCase();
+      final categoriaNombreLower = categoria.nombre.toLowerCase();
+      
+      // Verificar si es SICOR (más robusto)
+      final isSicor = categoryNameLower.contains('sicor') || 
+                     categoryNameLower.contains('medición') || 
+                     categoryNameLower.contains('medicion') ||
+                     categoriaNombreLower.contains('sicor') ||
+                     categoriaNombreLower.contains('medición') ||
+                     categoriaNombreLower.contains('medicion');
+      
+      debugPrint('   - isSicor: $isSicor');
+      
+      if (isSicor) {
+        debugPrint('✅ SICOR detectado en _openPendingSession, redirigiendo a InventarioTarjetasRedScreen');
+        // Navegar a la pantalla de inventario de tarjetas de red (SICOR)
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => InventarioTarjetasRedScreen(
+              sessionId: session.id,
+            ),
+          ),
+        );
+        return;
+      }
+      
       if (categoryNameLower.contains('jumper')) {
         // Intentar detectar si hay una subcategoría en el nombre (ej: "Jumpers FC-FC")
         JumperCategory? detectedJumperCategory;
@@ -372,7 +502,36 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
           );
         }
       } else {
+        // Para otras categorías, verificar una vez más si es SICOR antes de ir a CategoryInventoryScreen
+        final categoriaNombreLower = categoria.nombre.toLowerCase();
+        final categoryNameLower = session.categoryName.toLowerCase();
+        final isSicorFinal = categoryNameLower.contains('sicor') || 
+                            categoryNameLower.contains('medición') || 
+                            categoryNameLower.contains('medicion') ||
+                            categoriaNombreLower.contains('sicor') ||
+                            categoriaNombreLower.contains('medición') ||
+                            categoriaNombreLower.contains('medicion');
+        
+        debugPrint('🔍 Verificación final en else:');
+        debugPrint('   - categoryNameLower: $categoryNameLower');
+        debugPrint('   - categoriaNombreLower: $categoriaNombreLower');
+        debugPrint('   - isSicorFinal: $isSicorFinal');
+        
+        if (isSicorFinal) {
+          debugPrint('✅ SICOR detectado en else final, redirigiendo a InventarioTarjetasRedScreen');
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => InventarioTarjetasRedScreen(
+                sessionId: session.id,
+              ),
+            ),
+          );
+          return;
+        }
+        
         // Para otras categorías, navegar directamente a la pantalla de inventario
+        debugPrint('⚠️ No es SICOR, usando CategoryInventoryScreen');
         final isAdmin = await _checkIsAdmin();
         await Navigator.push(
           context,
@@ -873,9 +1032,9 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
                 Colors.purple,
               ),
               _buildFilterChip(
-                'Equipo de Medición',
-                _categoryFilter == 'Equipo de Medición',
-                () => _onCategoryFilterChanged('Equipo de Medición'),
+                'SICOR',
+                _categoryFilter == 'SICOR',
+                () => _onCategoryFilterChanged('SICOR'),
                 Icons.straighten,
                 Colors.green,
               ),
@@ -1048,7 +1207,11 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
                   }
                 });
               }
-            : () => _viewInventory(session),
+            : () {
+                print('🚨🚨🚨 CARD TAP (onTap) 🚨🚨🚨');
+                print('🚨 session.categoryName: "${session.categoryName}"');
+                _viewInventory(session);
+              },
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -1158,7 +1321,13 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     TextButton.icon(
-                      onPressed: () => _viewInventory(session),
+                      onPressed: () {
+                        print('🚨🚨🚨 BOTÓN CONTINUAR/VER DETALLES PRESIONADO 🚨🚨🚨');
+                        print('🚨 session.categoryName: "${session.categoryName}"');
+                        print('🚨 session.categoryId: ${session.categoryId}');
+                        print('🚨 session.status: ${session.status}');
+                        _viewInventory(session);
+                      },
                       icon: Icon(
                         isPending ? Icons.play_arrow : Icons.visibility,
                         size: 18,

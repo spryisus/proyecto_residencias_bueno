@@ -12,6 +12,7 @@ import '../inventory/inventory_type_selection_screen.dart';
 import '../inventory/category_inventory_screen.dart';
 import '../inventory/jumper_categories_screen.dart' show JumperCategories, JumperCategory, JumperCategoriesScreen;
 import '../computo/inventario_computo_screen.dart';
+import '../sicor/inventario_tarjetas_red_screen.dart';
 import '../shipments/shipments_screen.dart';
 import '../admin/admin_dashboard.dart';
 import '../settings/settings_screen.dart';
@@ -453,6 +454,29 @@ class _WelcomePageState extends State<WelcomePage> {
         throw 'La categoría asociada ya no existe.';
       }
 
+      // Verificar si es SICOR (antes que Jumpers)
+      final categoriaNombreLower = categoria.nombre.toLowerCase();
+      final isSicor = categoryNameLower.contains('sicor') || 
+                     categoryNameLower.contains('medición') || 
+                     categoryNameLower.contains('medicion') ||
+                     categoriaNombreLower.contains('sicor') ||
+                     categoriaNombreLower.contains('medición') ||
+                     categoriaNombreLower.contains('medicion');
+      
+      if (isSicor) {
+        // Navegar a la pantalla de inventario de tarjetas de red (SICOR)
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => InventarioTarjetasRedScreen(
+              sessionId: session.id,
+            ),
+          ),
+        );
+        await _loadSessions();
+        return;
+      }
+      
       // Verificar si es Jumpers y si tiene subcategoría en el nombre
       if (categoryNameLower.contains('jumper')) {
         // Intentar detectar si hay una subcategoría en el nombre (ej: "Jumpers FC-FC")
