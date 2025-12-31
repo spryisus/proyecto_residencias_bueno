@@ -3,7 +3,9 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class QRScannerScreen extends StatefulWidget {
-  const QRScannerScreen({super.key});
+  final Function(String)? onQRScanned;
+  
+  const QRScannerScreen({super.key, this.onQRScanned});
 
   @override
   State<QRScannerScreen> createState() => _QRScannerScreenState();
@@ -120,13 +122,20 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(context);
-                _searchProductByQR(code);
+                if (widget.onQRScanned != null) {
+                  // Si hay un callback, usarlo y cerrar la pantalla
+                  widget.onQRScanned!(code);
+                  Navigator.pop(context);
+                } else {
+                  // Si no hay callback, usar la búsqueda por defecto
+                  _searchProductByQR(code);
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF003366),
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Buscar Producto'),
+              child: Text(widget.onQRScanned != null ? 'Buscar Tarjeta' : 'Buscar Producto'),
             ),
           ],
         );
@@ -206,7 +215,10 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Escanear Código QR'),
+        title: const Text(
+          'Escanear Código QR',
+          style: TextStyle(color: Colors.white),
+        ),
         centerTitle: true,
         backgroundColor: const Color(0xFF003366),
         foregroundColor: Colors.white,

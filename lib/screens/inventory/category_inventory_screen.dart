@@ -884,6 +884,7 @@ class _CategoryInventoryScreenState extends State<CategoryInventoryScreen> {
           widget.jumperCategoryFilter != null
               ? '${widget.categoriaNombre} - ${widget.jumperCategoryFilter!.displayName}'
               : 'Inventario de ${widget.categoriaNombre}',
+          style: const TextStyle(color: Colors.white),
         ),
         centerTitle: true,
         backgroundColor: const Color(0xFF003366),

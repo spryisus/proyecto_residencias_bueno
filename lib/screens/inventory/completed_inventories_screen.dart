@@ -52,6 +52,7 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
   String? _jumperCategoryFilter;
   Set<String> _selectedSessionIds = {}; // IDs de sesiones seleccionadas para exportar
   bool _isSelectionMode = false; // Modo de selección múltiple
+  bool _filtersExpanded = true; // Estado de expansión de los filtros
 
   @override
   void initState() {
@@ -733,9 +734,12 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isSelectionMode 
-            ? '${_selectedSessionIds.length} seleccionado${_selectedSessionIds.length != 1 ? 's' : ''}'
-            : 'Historial de Inventarios'),
+        title: Text(
+          _isSelectionMode 
+              ? '${_selectedSessionIds.length} seleccionado${_selectedSessionIds.length != 1 ? 's' : ''}'
+              : 'Historial de Inventarios',
+          style: const TextStyle(color: Colors.white),
+        ),
         centerTitle: true,
         backgroundColor: const Color(0xFF003366),
         foregroundColor: Colors.white,
@@ -955,114 +959,128 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
 
   Widget _buildFilterBar(bool isMobile) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceVariant,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: ExpansionTile(
+        leading: Icon(
+          Icons.filter_list,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        title: Text(
+          'Filtros',
+          style: TextStyle(
+            fontSize: isMobile ? 14 : 16,
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+        trailing: Icon(
+          _filtersExpanded ? Icons.expand_less : Icons.expand_more,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        initiallyExpanded: _filtersExpanded,
+        onExpansionChanged: (expanded) {
+          setState(() {
+            _filtersExpanded = expanded;
+          });
+        },
         children: [
-          Row(
-            children: [
-              Icon(Icons.filter_list, size: 20, color: Theme.of(context).colorScheme.primary),
-              const SizedBox(width: 8),
-              Text(
-                'Filtros',
-                style: TextStyle(
-                  fontSize: isMobile ? 14 : 16,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Filtro por estado
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildFilterChip(
-                'Todos',
-                _statusFilter == FilterStatus.all,
-                () => _onStatusFilterChanged(FilterStatus.all),
-                Icons.all_inclusive,
-              ),
-              _buildFilterChip(
-                'Pendientes',
-                _statusFilter == FilterStatus.pending,
-                () => _onStatusFilterChanged(FilterStatus.pending),
-                Icons.pause_circle,
-                Colors.orange,
-              ),
-              _buildFilterChip(
-                'Finalizados',
-                _statusFilter == FilterStatus.completed,
-                () => _onStatusFilterChanged(FilterStatus.completed),
-                Icons.check_circle,
-                Colors.green,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Filtro por categoría
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildFilterChip(
-                'Todas las categorías',
-                _categoryFilter == null,
-                () => _onCategoryFilterChanged(null),
-                Icons.category,
-              ),
-              _buildFilterChip(
-                'Jumpers',
-                _categoryFilter == 'Jumpers',
-                () => _onCategoryFilterChanged('Jumpers'),
-                Icons.cable,
-                Colors.blue,
-              ),
-              _buildFilterChip(
-                'Equipo de Cómputo',
-                _categoryFilter == 'Equipo de Cómputo',
-                () => _onCategoryFilterChanged('Equipo de Cómputo'),
-                Icons.computer,
-                Colors.purple,
-              ),
-              _buildFilterChip(
-                'SICOR',
-                _categoryFilter == 'SICOR',
-                () => _onCategoryFilterChanged('SICOR'),
-                Icons.straighten,
-                Colors.green,
-              ),
-            ],
-          ),
-          // Filtro por subcategoría de jumper (solo si está seleccionado Jumpers)
-          if (_categoryFilter == 'Jumpers') ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildFilterChip(
-                  'Todos los jumpers',
-                  _jumperCategoryFilter == null,
-                  () => _onJumperCategoryFilterChanged(null),
-                  Icons.cable,
+                // Filtro por estado
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildFilterChip(
+                      'Todos',
+                      _statusFilter == FilterStatus.all,
+                      () => _onStatusFilterChanged(FilterStatus.all),
+                      Icons.all_inclusive,
+                    ),
+                    _buildFilterChip(
+                      'Pendientes',
+                      _statusFilter == FilterStatus.pending,
+                      () => _onStatusFilterChanged(FilterStatus.pending),
+                      Icons.pause_circle,
+                      Colors.orange,
+                    ),
+                    _buildFilterChip(
+                      'Finalizados',
+                      _statusFilter == FilterStatus.completed,
+                      () => _onStatusFilterChanged(FilterStatus.completed),
+                      Icons.check_circle,
+                      Colors.green,
+                    ),
+                  ],
                 ),
-                ...JumperCategories.all.map((jumperCat) => _buildFilterChip(
-                  jumperCat.displayName,
-                  _jumperCategoryFilter == jumperCat.name,
-                  () => _onJumperCategoryFilterChanged(jumperCat.name),
-                  jumperCat.icon,
-                  jumperCat.color,
-                )),
+                const SizedBox(height: 12),
+                // Filtro por categoría
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildFilterChip(
+                      'Todas las categorías',
+                      _categoryFilter == null,
+                      () => _onCategoryFilterChanged(null),
+                      Icons.category,
+                    ),
+                    _buildFilterChip(
+                      'Jumpers',
+                      _categoryFilter == 'Jumpers',
+                      () => _onCategoryFilterChanged('Jumpers'),
+                      Icons.cable,
+                      Colors.blue,
+                    ),
+                    _buildFilterChip(
+                      'Equipo de Cómputo',
+                      _categoryFilter == 'Equipo de Cómputo',
+                      () => _onCategoryFilterChanged('Equipo de Cómputo'),
+                      Icons.computer,
+                      Colors.purple,
+                    ),
+                    _buildFilterChip(
+                      'SICOR',
+                      _categoryFilter == 'SICOR',
+                      () => _onCategoryFilterChanged('SICOR'),
+                      Icons.straighten,
+                      Colors.green,
+                    ),
+                  ],
+                ),
+                // Filtro por subcategoría de jumper (solo si está seleccionado Jumpers)
+                if (_categoryFilter == 'Jumpers') ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _buildFilterChip(
+                        'Todos los jumpers',
+                        _jumperCategoryFilter == null,
+                        () => _onJumperCategoryFilterChanged(null),
+                        Icons.cable,
+                      ),
+                      ...JumperCategories.all.map((jumperCat) => _buildFilterChip(
+                        jumperCat.displayName,
+                        _jumperCategoryFilter == jumperCat.name,
+                        () => _onJumperCategoryFilterChanged(jumperCat.name),
+                        jumperCat.icon,
+                        jumperCat.color,
+                      )),
+                    ],
+                  ),
+                ],
               ],
             ),
-          ],
+          ),
         ],
       ),
     );

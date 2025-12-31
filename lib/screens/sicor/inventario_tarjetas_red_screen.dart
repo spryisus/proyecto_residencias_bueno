@@ -5,6 +5,7 @@ import '../../data/services/sicor_export_service.dart';
 import '../../domain/entities/inventory_session.dart';
 import '../../data/local/inventory_session_storage.dart';
 import '../../core/di/injection_container.dart';
+import '../inventory/qr_scanner_screen.dart';
 
 class InventarioTarjetasRedScreen extends StatefulWidget {
   final String? sessionId;
@@ -15,7 +16,7 @@ class InventarioTarjetasRedScreen extends StatefulWidget {
   State<InventarioTarjetasRedScreen> createState() => _InventarioTarjetasRedScreenState();
 }
 
-class _InventarioTarjetasRedScreenState extends State<InventarioTarjetasRedScreen> {
+class _InventarioTarjetasRedScreenState extends State<InventarioTarjetasRedScreen> with TickerProviderStateMixin {
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
   final InventorySessionStorage _sessionStorage = serviceLocator.get<InventorySessionStorage>();
   
@@ -30,12 +31,23 @@ class _InventarioTarjetasRedScreenState extends State<InventarioTarjetasRedScree
   Set<int> _tarjetasCompletadas = {}; // Set de IDs de tarjetas completadas
   String? _pendingSessionId; // ID de la sesión pendiente actual
   InventorySession? _pendingSession; // Sesión pendiente completa
+  final ScrollController _scrollController = ScrollController();
+  int? _highlightedTarjetaId; // ID de la tarjeta resaltada después de escanear QR
+  AnimationController? _blinkAnimationController;
+  Animation<double>? _blinkAnimation;
+  final Map<int, GlobalKey> _tarjetaKeys = {}; // Map de GlobalKeys para cada tarjeta por su ID
 
   @override
   void initState() {
     super.initState();
     _checkAdminStatus();
     _loadTarjetas();
+    // Si hay un sessionId, cargar el progreso del inventario
+    if (widget.sessionId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _cargarProgresoInventario();
+      });
+    }
   }
 
   Future<void> _checkAdminStatus() async {
@@ -71,6 +83,8 @@ class _InventarioTarjetasRedScreenState extends State<InventarioTarjetasRedScree
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
+    _blinkAnimationController?.dispose();
     super.dispose();
   }
 
@@ -134,6 +148,450 @@ class _InventarioTarjetasRedScreenState extends State<InventarioTarjetasRedScree
         }).toList();
       }
     });
+  }
+
+  // Abrir escáner QR para buscar tarjeta
+  Future<void> _abrirEscannerQR() async {
+    final result = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => QRScannerScreen(
+          onQRScanned: _buscarTarjetaPorQR,
+        ),
+      ),
+    );
+    
+    // Si se escaneó un código, ya se procesó en _buscarTarjetaPorQR
+    if (result != null) {
+      debugPrint('QR escaneado: $result');
+    }
+  }
+
+      // Buscar tarjeta por datos del QR
+      Future<void> _buscarTarjetaPorQR(String qrData) async {
+        try {
+          // Parsear el QR code
+          // Formato esperado: líneas separadas con:
+          // No. (numero)
+          // marca
+          // serie
+          // codigo
+          // no. serie (ignorar, no está en BD)
+          // posicion
+          
+          debugPrint('🔍 QR Data completo: "$qrData"');
+          
+          final lines = qrData.split('\n').map((line) => line.trim()).where((line) => line.isNotEmpty).toList();
+          
+          debugPrint('🔍 Líneas parseadas: ${lines.length}');
+          for (int i = 0; i < lines.length; i++) {
+            debugPrint('🔍 Línea $i: "${lines[i]}"');
+          }
+          
+          if (lines.isEmpty) {
+            _mostrarErrorQR('El código QR está vacío o no tiene formato válido');
+            return;
+          }
+
+      String? codigo;
+      String? serie;
+      String? posicion;
+
+      // Intentar parsear las líneas
+      // Formato esperado del QR:
+      // Línea 1: "No. XXXX" o "No.: XXXX" o solo el número (ignorar)
+      // Línea 2: "Marca: XXXX" o solo marca (ignorar)
+      // Línea 3: "Serie: XXXX" o solo serie
+      // Línea 4: "Código: XXXX" o solo codigo
+      // Línea 5: "no. serie: XXXX" o similar (ignorar)
+      // Línea 6: "Posición: XXXX" o solo posicion
+
+      // Función helper para extraer el valor después de los dos puntos
+      String _extraerValor(String line) {
+        final trimmed = line.trim();
+        // Si contiene ":", tomar solo la parte después de ":"
+        if (trimmed.contains(':')) {
+          final index = trimmed.indexOf(':');
+          if (index >= 0 && index < trimmed.length - 1) {
+            final valor = trimmed.substring(index + 1).trim();
+            debugPrint('🔧 Extraído de "$trimmed" -> "$valor"');
+            return valor;
+          }
+        }
+        return trimmed;
+      }
+
+      // Función helper para detectar qué tipo de campo es según su etiqueta
+      String? _detectarTipoCampo(String line) {
+        final lower = line.toLowerCase().trim();
+        // Verificar si la línea comienza con la etiqueta o la contiene
+        
+        // IMPORTANTE: Verificar "No. Serie:" PRIMERO antes de "no." genérico
+        // El formato real del QR tiene "No. Serie:" como la serie
+        if (lower.startsWith('no. serie:') || lower.startsWith('numero serie:') ||
+            lower.startsWith('no serie:') || lower.startsWith('número serie:') ||
+            (lower.contains('no. serie') && lower.contains(':')) ||
+            (lower.contains('numero serie') && lower.contains(':'))) {
+          return 'serie';
+        } else if (lower.startsWith('código:') || lower.startsWith('codigo:') || 
+            (lower.contains('código') && lower.contains(':'))) {
+          return 'codigo';
+        } else if (lower.startsWith('serie:') || 
+                   lower.startsWith('serial:') ||
+                   (lower.contains('serie') && lower.contains(':')) ||
+                   (lower.contains('serial') && lower.contains(':'))) {
+          return 'serie';
+        } else if (lower.startsWith('posición:') || lower.startsWith('posicion:') ||
+                   (lower.contains('posición') && lower.contains(':')) ||
+                   (lower.contains('posicion') && lower.contains(':'))) {
+          return 'posicion';
+        } else if (lower.startsWith('marca:') || (lower.contains('marca') && lower.contains(':'))) {
+          return 'marca'; // Para ignorar
+        } else if (lower.startsWith('tarjeta:') || (lower.contains('tarjeta') && lower.contains(':'))) {
+          return 'tarjeta'; // Para ignorar
+        } else if (lower.startsWith('no.') || lower.startsWith('numero') ||
+                   (lower.contains('no.') && lower.contains(':')) ||
+                   (lower.contains('numero') && lower.contains(':'))) {
+          return 'numero'; // Para ignorar
+        }
+        return null;
+      }
+
+      // Detectar si las líneas tienen etiquetas (formato "Etiqueta: Valor")
+      bool tieneEtiquetas = false;
+      for (var line in lines) {
+        if (line.contains(':') && _detectarTipoCampo(line) != null) {
+          tieneEtiquetas = true;
+          break;
+        }
+      }
+
+      if (tieneEtiquetas) {
+        // Parsear por etiquetas (más robusto)
+        debugPrint('📋 Parseando QR con etiquetas. Total líneas: ${lines.length}');
+        for (var line in lines) {
+          final tipoCampo = _detectarTipoCampo(line);
+          debugPrint('📋 Línea: "$line" -> Tipo detectado: $tipoCampo');
+          if (tipoCampo == 'codigo') {
+            codigo = _extraerValor(line);
+            debugPrint('✅ Código extraído: "$codigo"');
+          } else if (tipoCampo == 'serie') {
+            serie = _extraerValor(line);
+            debugPrint('✅ Serie extraída: "$serie"');
+          } else if (tipoCampo == 'posicion') {
+            posicion = _extraerValor(line);
+            debugPrint('✅ Posición extraída: "$posicion"');
+          }
+          // Ignorar marca, numero, etc.
+        }
+      } else {
+        debugPrint('📋 Parseando QR por posición (sin etiquetas detectadas)');
+        // Parsear por posición (formato original sin etiquetas)
+        // Intentar detectar por contenido aunque no tenga etiqueta explícita
+        for (int i = 0; i < lines.length; i++) {
+          final line = lines[i].trim();
+          debugPrint('📋 Procesando línea $i: "$line"');
+          
+          // Intentar detectar el tipo por contenido aunque no tenga etiqueta
+          final tipoDetectado = _detectarTipoCampo(line);
+          if (tipoDetectado == 'codigo' && codigo == null) {
+            codigo = line;
+            debugPrint('✅ Código detectado por contenido: "$codigo"');
+            continue;
+          } else if (tipoDetectado == 'serie' && serie == null) {
+            serie = line;
+            debugPrint('✅ Serie detectada por contenido: "$serie"');
+            continue;
+          } else if (tipoDetectado == 'posicion' && posicion == null) {
+            posicion = line;
+            debugPrint('✅ Posición detectada por contenido: "$posicion"');
+            continue;
+          }
+          
+          // Si no se detectó por contenido, usar posición fija
+          if (i == 0) {
+            // Primera línea: número - ignorar
+            continue;
+          } else if (i == 1) {
+            // marca - ignorar
+            continue;
+          } else if (i == 2 && serie == null) {
+            serie = line;
+            debugPrint('✅ Serie asignada por posición: "$serie"');
+          } else if (i == 3 && codigo == null) {
+            codigo = line;
+            debugPrint('✅ Código asignado por posición: "$codigo"');
+          } else if (i == 4) {
+            // no. serie - ignorar
+            continue;
+          } else if (i == 5 && posicion == null) {
+            posicion = line;
+            debugPrint('✅ Posición asignada por posición: "$posicion"');
+          }
+        }
+      }
+      
+      // Limpiar los valores (eliminar espacios extra y caracteres especiales)
+      codigo = codigo?.trim();
+      serie = serie?.trim();
+      posicion = posicion?.trim();
+      
+      debugPrint('🔍 QR Parseado FINAL - Código: "$codigo", Serie: "$serie", Posición: "$posicion"');
+      debugPrint('🔍 Validación - Código válido: ${codigo != null && codigo.isNotEmpty}');
+      debugPrint('🔍 Validación - Serie válida: ${serie != null && serie.isNotEmpty}');
+
+      // Buscar en la base de datos por código Y serie (ambos deben coincidir)
+      if (codigo == null || codigo.isEmpty) {
+        debugPrint('❌ Error: Código es null o vacío');
+        _mostrarErrorQR('El código QR no contiene un código válido. Líneas detectadas: ${lines.length}');
+        return;
+      }
+
+      if (serie == null || serie.isEmpty) {
+        debugPrint('❌ Error: Serie es null o vacía');
+        debugPrint('❌ Líneas completas del QR:');
+        for (int i = 0; i < lines.length; i++) {
+          debugPrint('❌   Línea $i: "${lines[i]}"');
+        }
+        _mostrarErrorQR('El código QR no contiene una serie válida. Por favor verifica el formato del QR.');
+        return;
+      }
+
+      debugPrint('🔍 Buscando en BD - Código: "$codigo", Serie: "$serie"');
+
+      // Buscar por código Y serie (ambos deben coincidir exactamente)
+      final response = await supabaseClient
+          .from('t_tarjetas_red')
+          .select('*')
+          .eq('codigo', codigo)
+          .eq('serie', serie);
+      
+      debugPrint('🔍 Resultados encontrados: ${response.length}');
+      
+      final tarjetas = List<Map<String, dynamic>>.from(response);
+      
+      if (tarjetas.isEmpty) {
+        _mostrarErrorQR('No se encontró ninguna tarjeta con el código "$codigo" y serie "$serie" en la base de datos');
+        return;
+      }
+
+      // Si hay múltiples resultados (poco probable), tomar el primero
+      final tarjetaEncontrada = tarjetas.first;
+      final idTarjeta = tarjetaEncontrada['id_tarjeta_red'] as int?;
+
+      if (idTarjeta == null) {
+        _mostrarErrorQR('La tarjeta encontrada no tiene un ID válido');
+        return;
+      }
+
+      // Actualizar la posición en la tarjeta encontrada con la del QR si está disponible
+      if (posicion != null && posicion.isNotEmpty) {
+        tarjetaEncontrada['posicion'] = posicion;
+      }
+
+      // Buscar el índice en la lista para hacer scroll
+      var index = _tarjetasFiltradas.indexWhere(
+        (t) => (t['id_tarjeta_red'] as int?) == idTarjeta,
+      );
+      var usarListaFiltrada = true;
+
+      if (index == -1) {
+        // Si no está en la lista filtrada, limpiar el filtro y buscar de nuevo
+        setState(() {
+          _searchQuery = '';
+          _searchController.clear();
+          _tarjetasFiltradas = _tarjetas;
+        });
+        
+        // Buscar de nuevo en la lista completa
+        index = _tarjetas.indexWhere(
+          (t) => (t['id_tarjeta_red'] as int?) == idTarjeta,
+        );
+        usarListaFiltrada = false;
+        
+        if (index == -1) {
+          _mostrarErrorQR('La tarjeta no se encuentra en la lista actual');
+          return;
+        }
+      }
+      
+      // Flujo secuencial:
+      // 1. Hacer scroll a la tarjeta encontrada
+      await _scrollToTarjeta(index, idTarjeta, usarListaFiltrada);
+      
+      // 2. Esperar a que el scroll se complete y la tarjeta sea visible
+      await Future.delayed(const Duration(milliseconds: 800));
+      
+      // 3. Iniciar animación de parpadeo
+      await _iniciarParpadeo(idTarjeta);
+      
+      // 4. Esperar a que termine el parpadeo (2 segundos)
+      await Future.delayed(const Duration(milliseconds: 2000));
+      
+      // 5. Detener parpadeo y abrir diálogo de edición
+      _detenerParpadeo();
+      if (mounted) {
+        _mostrarEditarTarjetaDialog(tarjetaEncontrada);
+      }
+    } catch (e) {
+      debugPrint('Error al buscar tarjeta por QR: $e');
+      _mostrarErrorQR('Error al procesar el código QR: $e');
+    }
+  }
+
+  // Paso 1: Hacer scroll a una tarjeta específica usando GlobalKey (sin parpadeo aún)
+  Future<void> _scrollToTarjeta(int index, int idTarjeta, [bool usarListaFiltrada = true]) async {
+    setState(() {
+      _highlightedTarjetaId = idTarjeta;
+    });
+
+    // Asegurarse de que el GlobalKey existe para esta tarjeta
+    if (!_tarjetaKeys.containsKey(idTarjeta)) {
+      _tarjetaKeys[idTarjeta] = GlobalKey();
+      // Necesitamos reconstruir para que el key se asigne al widget
+      setState(() {});
+    }
+
+    final key = _tarjetaKeys[idTarjeta];
+    if (key == null) {
+      debugPrint('⚠️ No se pudo obtener el GlobalKey para la tarjeta $idTarjeta');
+      return;
+    }
+
+    // Esperar a que el widget se construya completamente usando WidgetsBinding
+    // Esto asegura que el widget esté en el árbol de widgets antes de intentar acceder al contexto
+    await WidgetsBinding.instance.endOfFrame;
+    await Future.delayed(const Duration(milliseconds: 100));
+    
+    // Intentar múltiples veces hasta que el contexto esté disponible
+    BuildContext? finalContext;
+    int intentos = 0;
+    const maxIntentos = 10;
+    
+    while (intentos < maxIntentos) {
+      finalContext = key.currentContext;
+      if (finalContext != null && finalContext.mounted) {
+        debugPrint('✅ Contexto disponible después de $intentos intentos');
+        break;
+      }
+      await Future.delayed(const Duration(milliseconds: 100));
+      intentos++;
+    }
+
+    if (finalContext == null || !finalContext.mounted) {
+      debugPrint('⚠️ El contexto no está disponible después de $maxIntentos intentos, usando método fallback');
+      // Fallback al método manual si el contexto no está disponible
+      if (_scrollController.hasClients) {
+        const double alturaTarjeta = 100.0;
+        const double margenTarjeta = 16.0;
+        final double targetPosition = (index * (alturaTarjeta + margenTarjeta));
+        final double maxScroll = _scrollController.position.maxScrollExtent;
+        final double finalPosition = targetPosition > maxScroll ? maxScroll : targetPosition;
+        await _scrollController.animateTo(
+          finalPosition,
+          duration: const Duration(milliseconds: 700),
+          curve: Curves.easeInOut,
+        );
+        debugPrint('✅ Scroll completado usando método fallback');
+      }
+      return;
+    }
+
+    // Usar Scrollable.ensureVisible para hacer scroll preciso a la tarjeta
+    try {
+      await Scrollable.ensureVisible(
+        finalContext,
+        duration: const Duration(milliseconds: 700),
+        curve: Curves.easeInOut,
+        alignment: 0.15, // Posicionar la tarjeta en el 15% superior de la pantalla visible
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      );
+      debugPrint('✅ Scroll completado a tarjeta ID: $idTarjeta usando GlobalKey');
+    } catch (e) {
+      debugPrint('⚠️ Error al hacer scroll con ensureVisible: $e');
+      // Fallback al método manual si ensureVisible falla
+      if (_scrollController.hasClients) {
+        const double alturaTarjeta = 100.0;
+        const double margenTarjeta = 16.0;
+        final double targetPosition = (index * (alturaTarjeta + margenTarjeta));
+        final double maxScroll = _scrollController.position.maxScrollExtent;
+        final double finalPosition = targetPosition > maxScroll ? maxScroll : targetPosition;
+        await _scrollController.animateTo(
+          finalPosition,
+          duration: const Duration(milliseconds: 700),
+          curve: Curves.easeInOut,
+        );
+        debugPrint('✅ Scroll completado usando método fallback');
+      }
+    }
+
+    // Mostrar mensaje de tarjeta encontrada
+    final listaUsar = usarListaFiltrada ? _tarjetasFiltradas : _tarjetas;
+    final numeroTarjeta = index < listaUsar.length 
+        ? (listaUsar[index]['numero'] ?? 'Sin número')
+        : 'Sin número';
+
+    if (_scaffoldMessengerKey.currentState != null) {
+      _scaffoldMessengerKey.currentState!.showSnackBar(
+        SnackBar(
+          content: Text('Tarjeta encontrada: $numeroTarjeta'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  // Paso 3: Iniciar animación de parpadeo
+  Future<void> _iniciarParpadeo(int idTarjeta) async {
+    // Disposing previous animation controller if exists
+    _blinkAnimationController?.dispose();
+
+    // Crear nueva animación de parpadeo
+    _blinkAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+
+    _blinkAnimation = Tween<double>(
+      begin: 0.3,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _blinkAnimationController!,
+      curve: Curves.easeInOut,
+    ));
+
+    // Iniciar animación de parpadeo repetida
+    _blinkAnimationController!.repeat(reverse: true);
+    
+    // Actualizar el estado para que se muestre el parpadeo
+    setState(() {
+      _highlightedTarjetaId = idTarjeta;
+    });
+  }
+
+  // Detener parpadeo y limpiar
+  void _detenerParpadeo() {
+    _blinkAnimationController?.stop();
+    _blinkAnimationController?.dispose();
+    _blinkAnimationController = null;
+    _blinkAnimation = null;
+    setState(() {
+      _highlightedTarjetaId = null;
+    });
+  }
+
+  // Mostrar error al buscar por QR
+  void _mostrarErrorQR(String mensaje) {
+    if (_scaffoldMessengerKey.currentState != null) {
+      _scaffoldMessengerKey.currentState!.showSnackBar(
+        SnackBar(
+          content: Text(mensaje),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
   }
 
   Future<void> _exportarInventario() async {
@@ -236,7 +694,10 @@ class _InventarioTarjetasRedScreenState extends State<InventarioTarjetasRedScree
       key: _scaffoldMessengerKey,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Inventario de Tarjetas de Red (SICOR)'),
+          title: const Text(
+            'Inventario de Tarjetas de Red (SICOR)',
+            style: TextStyle(color: Colors.white),
+          ),
           centerTitle: true,
           backgroundColor: const Color(0xFF003366),
           foregroundColor: Colors.white,
@@ -259,6 +720,11 @@ class _InventarioTarjetasRedScreenState extends State<InventarioTarjetasRedScree
                   ),
                 ),
               ),
+            IconButton(
+              icon: const Icon(Icons.qr_code_scanner),
+              tooltip: 'Escanear código QR',
+              onPressed: _abrirEscannerQR,
+            ),
             if (_tarjetas.isNotEmpty || (_modoInventario && _tarjetasCompletadas.isNotEmpty))
               IconButton(
                 icon: const Icon(Icons.file_download),
@@ -418,6 +884,7 @@ class _InventarioTarjetasRedScreenState extends State<InventarioTarjetasRedScree
                               ),
                             )
                           : ListView.builder(
+                              controller: _scrollController,
                               padding: const EdgeInsets.all(16.0),
                               itemCount: _tarjetasFiltradas.length,
                               itemBuilder: (context, index) {
@@ -428,7 +895,7 @@ class _InventarioTarjetasRedScreenState extends State<InventarioTarjetasRedScree
                     ),
                   ],
                 ),
-        floatingActionButton: !_modoInventario && _tarjetasFiltradas.isNotEmpty
+        floatingActionButton: !_modoInventario && _tarjetasFiltradas.isNotEmpty && !_isAdmin
             ? FloatingActionButton.extended(
                 onPressed: () {
                   setState(() {
@@ -1083,28 +1550,58 @@ class _InventarioTarjetasRedScreenState extends State<InventarioTarjetasRedScree
     final comentarios = tarjeta['comentarios']?.toString() ?? '';
     final idTarjetaRed = tarjeta['id_tarjeta_red'] as int?;
     final estaCompletada = idTarjetaRed != null && _tarjetasCompletadas.contains(idTarjetaRed);
+    final estaResaltada = idTarjetaRed != null && _highlightedTarjetaId == idTarjetaRed;
 
-    // Color de fondo y borde según el estado de stock
-    final backgroundColor = enStock 
-        ? Theme.of(context).colorScheme.surface
-        : Colors.red[50];
-    final borderColor = enStock 
-        ? Colors.grey[300]!
-        : Colors.red[400]!;
+    // Color de fondo según el estado de stock y si está resaltada
+    final backgroundColor = estaResaltada
+        ? Colors.blue[50]?.withOpacity(0.3) ?? Colors.blue[100]!
+        : (enStock 
+            ? Theme.of(context).colorScheme.surface
+            : Colors.red[50]);
     final textColor = enStock 
         ? Theme.of(context).colorScheme.onSurface
         : Colors.red[900]!;
 
-    return Card(
-      elevation: estaCompletada ? 6 : 4,
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: estaCompletada
-            ? const BorderSide(color: Colors.green, width: 2)
-            : BorderSide(color: borderColor, width: 2),
-      ),
-      child: Container(
+    // Calcular el color del borde base (sin animación)
+    Color baseBorderColor;
+    if (estaCompletada) {
+      baseBorderColor = Colors.green;
+    } else if (enStock) {
+      baseBorderColor = Colors.grey[300]!;
+    } else {
+      baseBorderColor = Colors.red[400]!;
+    }
+
+    // Obtener o crear el GlobalKey para esta tarjeta
+    if (idTarjetaRed != null && !_tarjetaKeys.containsKey(idTarjetaRed)) {
+      _tarjetaKeys[idTarjetaRed] = GlobalKey();
+    }
+    final tarjetaKey = idTarjetaRed != null ? _tarjetaKeys[idTarjetaRed] : null;
+
+    return AnimatedBuilder(
+      animation: _blinkAnimation ?? const AlwaysStoppedAnimation(1.0),
+      builder: (context, child) {
+        // Calcular el color del borde con animación de parpadeo si está resaltada
+        Color animatedBorderColor = baseBorderColor;
+        if (estaResaltada && _blinkAnimation != null) {
+          final opacity = _blinkAnimation!.value;
+          animatedBorderColor = Colors.blue.withOpacity(opacity);
+        } else if (estaResaltada) {
+          animatedBorderColor = Colors.blue;
+        }
+        
+        return Card(
+          key: tarjetaKey,
+          elevation: estaResaltada ? 8 : (estaCompletada ? 6 : 4),
+          margin: const EdgeInsets.only(bottom: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(
+              color: animatedBorderColor,
+              width: estaResaltada ? 3 : 2,
+            ),
+          ),
+          child: Container(
         decoration: BoxDecoration(
           color: backgroundColor,
           borderRadius: BorderRadius.circular(16),
@@ -1225,7 +1722,9 @@ class _InventarioTarjetasRedScreenState extends State<InventarioTarjetasRedScree
             ),
           ],
         ),
-      ),
+          ),
+        );
+      },
     );
   }
 

@@ -10,6 +10,7 @@ import '../../core/di/injection_container.dart';
 import '../../app/config/supabase_client.dart' show supabaseClient;
 import '../../data/services/computo_export_service.dart';
 import '../../data/services/jumpers_export_service.dart';
+import '../../data/services/sicor_export_service.dart';
 import '../../core/utils/file_saver_helper.dart';
 import 'jumper_categories_screen.dart' show JumperCategory, JumperCategories;
 
@@ -31,10 +32,12 @@ class _CompletedInventoryDetailScreenState extends State<CompletedInventoryDetai
   final InventarioRepository _inventarioRepository = serviceLocator.get<InventarioRepository>();
   List<InventarioCompleto> _inventoryItems = [];
   List<Map<String, dynamic>> _computoEquipos = []; // Para equipos de cómputo
+  List<Map<String, dynamic>> _tarjetasRed = []; // Para tarjetas de red SICOR
   Map<int, int> _sessionQuantities = {};
   bool _isLoading = true;
   String? _error;
   bool _isComputo = false; // Flag para saber si es inventario de cómputo
+  bool _isSicor = false; // Flag para saber si es inventario SICOR
 
   @override
   void initState() {
@@ -49,6 +52,41 @@ class _CompletedInventoryDetailScreenState extends State<CompletedInventoryDetai
         _isLoading = true;
         _error = null;
       });
+
+      // Detectar si es SICOR (tarjetas de red)
+      final categoryNameLower = widget.session.categoryName.toLowerCase();
+      if (categoryNameLower.contains('sicor') || 
+          widget.categoria.nombre.toLowerCase().contains('sicor')) {
+        _isSicor = true;
+        // Cargar tarjetas de red desde la base de datos
+        try {
+          final tarjetasResponse = await supabaseClient
+              .from('t_tarjetas_red')
+              .select('*')
+              .order('id_tarjeta_red');
+          
+          final tarjetasList = List<Map<String, dynamic>>.from(tarjetasResponse);
+          
+          // Filtrar solo las tarjetas que están en la sesión (completadas = 1)
+          // En SICOR, quantities usa id_tarjeta_red como clave
+          final tarjetasCompletadas = tarjetasList.where((tarjeta) {
+            final idTarjetaRed = tarjeta['id_tarjeta_red'] as int?;
+            if (idTarjetaRed == null) return false;
+            return widget.session.quantities[idTarjetaRed] == 1;
+          }).toList();
+          
+          setState(() {
+            _tarjetasRed = tarjetasCompletadas;
+            _isLoading = false;
+          });
+        } catch (e) {
+          setState(() {
+            _isLoading = false;
+            _error = 'Error al cargar tarjetas de red: $e';
+          });
+        }
+        return;
+      }
 
       // Manejo especial para "Equipo de Cómputo" que no tiene categoría en la BD
       if (widget.categoria.idCategoria == -1 || widget.categoria.nombre == 'Equipo de Cómputo') {
@@ -121,7 +159,6 @@ class _CompletedInventoryDetailScreenState extends State<CompletedInventoryDetai
       // Detectar si hay una subcategoría de jumper en el nombre de la sesión
       // Ej: "Jumpers SC-SC" -> detectar "SC-SC"
       JumperCategory? detectedJumperCategory;
-      final categoryNameLower = widget.session.categoryName.toLowerCase();
       if (categoryNameLower.contains('jumper')) {
         for (final jumperCategory in JumperCategories.all) {
           if (widget.session.categoryName.contains(jumperCategory.displayName)) {
@@ -184,7 +221,10 @@ class _CompletedInventoryDetailScreenState extends State<CompletedInventoryDetai
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Detalles del Inventario'),
+        title: const Text(
+          'Detalles del Inventario',
+          style: TextStyle(color: Colors.white),
+        ),
         centerTitle: true,
         backgroundColor: const Color(0xFF003366),
         foregroundColor: Colors.white,
@@ -285,11 +325,24 @@ class _CompletedInventoryDetailScreenState extends State<CompletedInventoryDetai
                                 spacing: 12,
                                 runSpacing: 8,
                                 children: [
-                                  _buildStatChip(
-                                    Icons.inventory_2,
-                                    '${_inventoryItems.length} productos',
-                                    isMobile,
-                                  ),
+                                  if (_isSicor)
+                                    _buildStatChip(
+                                      Icons.network_check,
+                                      '${_tarjetasRed.length} tarjetas',
+                                      isMobile,
+                                    )
+                                  else if (_isComputo)
+                                    _buildStatChip(
+                                      Icons.computer,
+                                      '${_computoEquipos.length} equipos',
+                                      isMobile,
+                                    )
+                                  else
+                                    _buildStatChip(
+                                      Icons.inventory_2,
+                                      '${_inventoryItems.length} productos',
+                                      isMobile,
+                                    ),
                                   if (widget.session.ownerName != null)
                                     _buildStatChip(
                                       Icons.person,
@@ -301,10 +354,43 @@ class _CompletedInventoryDetailScreenState extends State<CompletedInventoryDetai
                             ],
                           ),
                         ),
-                        // Lista de productos o equipos
+                        // Lista de productos, equipos o tarjetas de red
                         Expanded(
-                          child: _isComputo
-                              ? (_computoEquipos.isEmpty
+                          child: _isSicor
+                              ? (_tarjetasRed.isEmpty
+                                  ? Center(
+                                      child: Padding(
+                                        padding: EdgeInsets.all(padding),
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              Icons.network_check_outlined,
+                                              size: 64,
+                                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3),
+                                            ),
+                                            const SizedBox(height: 16),
+                                            Text(
+                                              'No se encontraron tarjetas de red',
+                                              style: TextStyle(
+                                                fontSize: isMobile ? 16 : 18,
+                                                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    )
+                                  : ListView.builder(
+                                      padding: EdgeInsets.all(padding),
+                                      itemCount: _tarjetasRed.length,
+                                      itemBuilder: (context, index) {
+                                        final tarjeta = _tarjetasRed[index];
+                                        return _buildTarjetaRedCard(tarjeta, isMobile);
+                                      },
+                                    ))
+                              : _isComputo
+                                  ? (_computoEquipos.isEmpty
                                   ? Center(
                                       child: Padding(
                                         padding: EdgeInsets.all(padding),
@@ -336,7 +422,7 @@ class _CompletedInventoryDetailScreenState extends State<CompletedInventoryDetai
                                         return _buildComputoEquipoCard(equipo, isMobile);
                                       },
                                     ))
-                              : (_inventoryItems.isEmpty
+                                  : (_inventoryItems.isEmpty
                                   ? Center(
                                       child: Padding(
                                         padding: EdgeInsets.all(padding),
@@ -383,6 +469,107 @@ class _CompletedInventoryDetailScreenState extends State<CompletedInventoryDetai
         foregroundColor: Colors.white,
         tooltip: 'Exportar a Excel',
         child: const Icon(Icons.file_download),
+      ),
+    );
+  }
+
+  Widget _buildTarjetaRedCard(Map<String, dynamic> tarjeta, bool isMobile) {
+    final numero = (tarjeta['numero']?.toString() ?? 'Sin número').trim();
+    final codigo = (tarjeta['codigo']?.toString() ?? '').trim();
+    final serie = (tarjeta['serie']?.toString() ?? '').trim();
+    final marca = (tarjeta['marca']?.toString() ?? '').trim();
+    final posicion = (tarjeta['posicion']?.toString() ?? '').trim();
+    final enStock = (tarjeta['en_stock']?.toString() ?? 'SI').trim();
+    final comentarios = (tarjeta['comentarios']?.toString() ?? '').trim();
+    final isInStock = enStock.toUpperCase() == 'SI';
+    
+    return Card(
+      margin: EdgeInsets.symmetric(
+        horizontal: isMobile ? 8 : 16,
+        vertical: 8,
+      ),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      color: isInStock ? null : Colors.red.withValues(alpha: 0.1),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isInStock 
+                        ? const Color(0xFF003366).withValues(alpha: 0.1)
+                        : Colors.red.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.network_check,
+                    color: isInStock ? const Color(0xFF003366) : Colors.red,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        numero,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: isInStock ? const Color(0xFF003366) : Colors.red[700],
+                        ),
+                      ),
+                      if (codigo.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Código: $codigo',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isInStock 
+                        ? Colors.green.withValues(alpha: 0.2)
+                        : Colors.red.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    enStock,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: isInStock ? Colors.green[700] : Colors.red[700],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (serie.isNotEmpty)
+              _buildInfoRow('Serie', serie),
+            if (marca.isNotEmpty)
+              _buildInfoRow('Marca', marca),
+            if (posicion.isNotEmpty)
+              _buildInfoRow('Posición', posicion),
+            if (comentarios.isNotEmpty)
+              _buildInfoRow('Comentarios', comentarios),
+          ],
+        ),
       ),
     );
   }
@@ -725,8 +912,8 @@ class _CompletedInventoryDetailScreenState extends State<CompletedInventoryDetai
 
   Future<void> _exportToExcel() async {
     try {
-      // Verificar si hay datos para exportar (productos normales o equipos de cómputo)
-      if (_inventoryItems.isEmpty && _computoEquipos.isEmpty) {
+      // Verificar si hay datos para exportar (productos normales, equipos de cómputo o tarjetas de red)
+      if (_inventoryItems.isEmpty && _computoEquipos.isEmpty && _tarjetasRed.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -734,6 +921,60 @@ class _CompletedInventoryDetailScreenState extends State<CompletedInventoryDetai
               backgroundColor: Colors.orange,
             ),
           );
+        }
+        return;
+      }
+
+      // Si es inventario SICOR (tarjetas de red), usar el servicio de exportación específico
+      if (_isSicor && _tarjetasRed.isNotEmpty) {
+        try {
+          // Mostrar indicador de carga
+          if (mounted) {
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => const Center(
+                child: CircularProgressIndicator(),
+              ),
+            );
+          }
+
+          // Preparar datos para exportación según plantilla
+          final itemsToExport = _tarjetasRed.map((tarjeta) => <String, dynamic>{
+            'en_stock': tarjeta['en_stock'] ?? 'SI',
+            'numero': tarjeta['numero'] ?? '',
+            'codigo': tarjeta['codigo'] ?? '',
+            'serie': tarjeta['serie'] ?? '',
+            'marca': tarjeta['marca'] ?? '',
+            'posicion': tarjeta['posicion'] ?? '',
+            'comentarios': tarjeta['comentarios'] ?? '',
+          }).toList();
+
+          final filePath = await SicorExportService.exportSicorToExcel(itemsToExport);
+
+          if (mounted) {
+            Navigator.pop(context); // Cerrar diálogo de carga
+            if (filePath != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Inventario SICOR exportado: $filePath'),
+                  backgroundColor: Colors.green,
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            }
+          }
+        } catch (e) {
+          if (mounted) {
+            Navigator.pop(context); // Cerrar diálogo de carga
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error al exportar: $e'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
         }
         return;
       }

@@ -269,7 +269,10 @@ class _InventoryTypeSelectionScreenState extends State<InventoryTypeSelectionScr
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Tipos de Inventario'),
+        title: const Text(
+          'Tipos de Inventario',
+          style: TextStyle(color: Colors.white),
+        ),
         centerTitle: true,
         backgroundColor: const Color(0xFF003366),
         foregroundColor: Colors.white,

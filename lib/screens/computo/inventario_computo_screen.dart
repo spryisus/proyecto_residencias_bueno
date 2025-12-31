@@ -441,7 +441,10 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
       key: _scaffoldMessengerKey,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Inventario de Equipo de Cómputo'),
+          title: const Text(
+            'Inventario de Equipo de Cómputo',
+            style: TextStyle(color: Colors.white),
+          ),
           centerTitle: true,
         backgroundColor: const Color(0xFF003366),
         foregroundColor: Colors.white,

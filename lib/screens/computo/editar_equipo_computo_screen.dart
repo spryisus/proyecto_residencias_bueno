@@ -217,7 +217,10 @@ class _EditarEquipoComputoScreenState extends State<EditarEquipoComputoScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Editar Equipo de Cómputo'),
+        title: const Text(
+          'Editar Equipo de Cómputo',
+          style: TextStyle(color: Colors.white),
+        ),
         centerTitle: true,
         backgroundColor: const Color(0xFF003366),
         foregroundColor: Colors.white,

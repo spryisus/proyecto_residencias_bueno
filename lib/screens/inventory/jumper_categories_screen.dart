@@ -315,7 +315,10 @@ class _JumperCategoriesScreenState extends State<JumperCategoriesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Categorías de ${widget.categoriaNombre}'),
+        title: Text(
+          'Categorías de ${widget.categoriaNombre}',
+          style: const TextStyle(color: Colors.white),
+        ),
         centerTitle: true,
         backgroundColor: const Color(0xFF003366),
         foregroundColor: Colors.white,
