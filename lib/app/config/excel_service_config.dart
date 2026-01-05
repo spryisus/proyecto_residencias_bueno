@@ -81,8 +81,13 @@ class ExcelServiceConfig {
           // Si no hay variable de entorno, usar producción
           return productionUrl;
         } else {
-          // Desktop (Windows, Linux, macOS): usar localhost
-          return 'http://localhost:8001';
+          // Desktop (Windows, Linux, macOS): usar producción por defecto (puedes cambiar con variable de entorno)
+          const envUrl = String.fromEnvironment('EXCEL_SERVICE_URL');
+          if (envUrl.isNotEmpty) {
+            return envUrl;
+          }
+          // Si no hay variable de entorno, usar producción
+          return productionUrl;
         }
       } catch (e) {
         // Si hay error, usar producción como fallback

@@ -807,6 +807,32 @@ async def generate_sicor_excel(request: Request):
             wb = openpyxl.load_workbook(TEMPLATE_PATH_SICOR)
             ws = wb.active
             
+            # Actualizar la fecha en el encabezado (fila 2, celda C2 que está en merged cell C2:H2)
+            try:
+                header_cell = ws.cell(row=2, column=3)  # Columna C, fila 2
+                header_text = str(header_cell.value) if header_cell.value else ""
+                
+                # Obtener fecha actual en formato DD/MM/YYYY
+                now = datetime.now()
+                fecha_actual = now.strftime("%d/%m/%Y")
+                
+                # Reemplazar la fecha al final del texto (formato DD/MM/YYYY)
+                # Buscar patrón de fecha al final: " - DD/MM/YYYY" o " - DD/MM/YYYY" al final
+                # Mantener todo el texto antes de la fecha
+                pattern = r'\s*-\s*\d{2}/\d{2}/\d{4}\s*$'
+                if re.search(pattern, header_text):
+                    # Reemplazar la fecha al final
+                    nuevo_texto = re.sub(pattern, f' - {fecha_actual}', header_text)
+                else:
+                    # Si no hay fecha al final, agregarla
+                    nuevo_texto = f"{header_text.rstrip()} - {fecha_actual}"
+                
+                # Actualizar la celda con el nuevo texto
+                header_cell.value = nuevo_texto
+                logger.info(f"📅 Fecha actualizada en encabezado: {fecha_actual}")
+            except Exception as e:
+                logger.warning(f"⚠️ No se pudo actualizar la fecha en el encabezado: {e}")
+            
             # Los datos empiezan en la fila 5, columna B (columna 2)
             start_row = 5
             start_col = 2  # Columna B
