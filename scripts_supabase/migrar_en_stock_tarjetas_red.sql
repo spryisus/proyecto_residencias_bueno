@@ -64,3 +64,7 @@ WHERE table_schema = 'public'
   AND table_name = 't_tarjetas_red'
   AND column_name = 'en_stock';
 
+
+
+
+

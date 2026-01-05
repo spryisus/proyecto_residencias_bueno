@@ -297,131 +297,234 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
         });
       }
       
-      // Intentar actualizar usando el ID primero
+      // Método mejorado: Actualizar primero, luego verificar con SELECT separado
+      // Esto funciona mejor en aplicaciones móviles donde .update().select() puede fallar
       debugPrint('📤 Intentando actualizar por ID: id_empleado=$idEmpleado, activo=$nuevoEstado');
       
       try {
-        // Método 1: Actualizar por ID con .select() para obtener respuesta
-        final response = await supabaseClient
+        // Paso 1: Hacer el UPDATE y verificar que se aplicó
+        // Usar .select() para obtener confirmación de que el UPDATE funcionó
+        final updateResponse = await supabaseClient
             .from('t_empleados')
             .update({'activo': nuevoEstado})
             .eq('id_empleado', idEmpleado)
-            .select('id_empleado, nombre_usuario, activo');
+            .select('id_empleado, activo')
+            .maybeSingle();
         
-        debugPrint('📥 Respuesta de actualización (por ID): $response');
+        debugPrint('✅ UPDATE ejecutado. Respuesta: $updateResponse');
         
-        if (response.isEmpty) {
-          throw Exception('La actualización por ID no devolvió resultados');
-        }
-        
-        final updatedUser = response.first;
-        debugPrint('✅ Usuario actualizado por ID: ${updatedUser}');
-        
-        // Parsear el valor de activo
-        bool activoActualizado = false;
-        final activoValue = updatedUser['activo'];
-        if (activoValue != null) {
-          if (activoValue is bool) {
-            activoActualizado = activoValue;
-          } else if (activoValue is String) {
-            activoActualizado = activoValue.toLowerCase() == 'true' || activoValue == '1';
-          } else if (activoValue is int) {
-            activoActualizado = activoValue == 1;
+        // Si el UPDATE devuelve datos, verificar inmediatamente
+        if (updateResponse != null) {
+          final activoInmediato = updateResponse['activo'];
+          bool activoVerificado = false;
+          if (activoInmediato is bool) {
+            activoVerificado = activoInmediato;
+          } else if (activoInmediato is String) {
+            activoVerificado = activoInmediato.toLowerCase() == 'true' || activoInmediato == '1';
+          } else if (activoInmediato is int) {
+            activoVerificado = activoInmediato == 1;
           }
-        }
-        
-        debugPrint('✅ Estado confirmado en BD: $activoActualizado');
-        
-        // Verificar que el cambio se aplicó correctamente
-        if (activoActualizado != nuevoEstado) {
-          throw Exception('El estado no se actualizó correctamente. Esperado: $nuevoEstado, Obtenido: $activoActualizado');
-        }
-        
-        // Actualizar el estado local con el valor confirmado de la BD
-        if (mounted) {
-          setState(() {
-            final index = _empleados.indexWhere((e) => e.idEmpleado == idEmpleado);
-            if (index != -1) {
-              _empleados[index] = _empleados[index].copyWith(activo: activoActualizado);
-              debugPrint('✅ Estado sincronizado localmente: ${_empleados[index].nombreUsuario} = ${_empleados[index].activo}');
-            }
-          });
           
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                activoActualizado
-                    ? '✅ Usuario activado correctamente'
-                    : '⚠️ Usuario desactivado correctamente',
+          if (activoVerificado == nuevoEstado) {
+            debugPrint('✅ Cambio confirmado inmediatamente en respuesta del UPDATE');
+            // Actualizar el estado local
+            if (mounted) {
+              setState(() {
+                final index = _empleados.indexWhere((e) => e.idEmpleado == idEmpleado);
+                if (index != -1) {
+                  _empleados[index] = _empleados[index].copyWith(activo: activoVerificado);
+                  debugPrint('✅ Estado sincronizado localmente: ${_empleados[index].nombreUsuario} = ${_empleados[index].activo}');
+                }
+              });
+              
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    activoVerificado
+                        ? '✅ Usuario activado correctamente'
+                        : '⚠️ Usuario desactivado correctamente',
+                  ),
+                  backgroundColor: activoVerificado ? Colors.green : Colors.orange,
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            }
+            return; // Salir temprano si el cambio se confirmó
+          } else {
+            debugPrint('⚠️ UPDATE devolvió respuesta pero el estado no coincide. Esperado: $nuevoEstado, Obtenido: $activoVerificado');
+          }
+        } else {
+          debugPrint('⚠️ UPDATE no devolvió respuesta, continuando con verificación separada...');
+        }
+        
+        // Paso 2: Si el UPDATE no devolvió confirmación, hacer verificación separada
+        // Solo continuar si el UPDATE no devolvió datos o el estado no coincide
+        if (updateResponse == null || (updateResponse['activo'] is bool ? updateResponse['activo'] as bool : false) != nuevoEstado) {
+          debugPrint('⚠️ UPDATE no confirmó el cambio, iniciando verificación separada...');
+          
+          // Esperar un momento para que la BD se sincronice
+          await Future.delayed(const Duration(milliseconds: 800));
+          
+          // Paso 3: Hacer múltiples intentos de verificación (hasta 5 intentos)
+          bool activoActualizado = false;
+          int intentos = 0;
+          const maxIntentos = 5;
+          
+          while (intentos < maxIntentos && activoActualizado != nuevoEstado) {
+            intentos++;
+            debugPrint('🔍 Intento de verificación $intentos/$maxIntentos...');
+            
+            try {
+              final verificacion = await supabaseClient
+                  .from('t_empleados')
+                  .select('id_empleado, nombre_usuario, activo')
+                  .eq('id_empleado', idEmpleado)
+                  .maybeSingle();
+              
+              debugPrint('📥 Respuesta de verificación (intento $intentos): $verificacion');
+              
+              if (verificacion == null) {
+                if (intentos < maxIntentos) {
+                  await Future.delayed(const Duration(milliseconds: 800));
+                  continue;
+                }
+                throw Exception('No se pudo verificar el cambio en la base de datos después de $maxIntentos intentos');
+              }
+              
+              // Parsear el valor de activo
+              final activoValue = verificacion['activo'];
+              if (activoValue != null) {
+                if (activoValue is bool) {
+                  activoActualizado = activoValue;
+                } else if (activoValue is String) {
+                  activoActualizado = activoValue.toLowerCase() == 'true' || activoValue == '1';
+                } else if (activoValue is int) {
+                  activoActualizado = activoValue == 1;
+                }
+              }
+              
+              debugPrint('✅ Estado confirmado en BD (intento $intentos): $activoActualizado');
+              
+              // Si el estado coincide, salir del bucle
+              if (activoActualizado == nuevoEstado) {
+                break;
+              }
+              
+              // Si no coincide y aún hay intentos, esperar y reintentar
+              if (intentos < maxIntentos) {
+                await Future.delayed(const Duration(milliseconds: 800));
+              }
+            } catch (e) {
+              debugPrint('⚠️ Error en intento $intentos: $e');
+              if (intentos < maxIntentos) {
+                await Future.delayed(const Duration(milliseconds: 800));
+                continue;
+              }
+              rethrow;
+            }
+          }
+          
+          // Verificar que el cambio se aplicó correctamente
+          if (activoActualizado != nuevoEstado) {
+            // Intentar recargar los datos desde la BD para ver el estado real
+            await _loadEmpleados();
+            throw Exception('El estado no se actualizó correctamente después de $maxIntentos intentos. Esperado: $nuevoEstado, Obtenido: $activoActualizado. Verifica las políticas RLS en Supabase.');
+          }
+          
+          // Actualizar el estado local con el valor confirmado
+          if (mounted) {
+            setState(() {
+              final index = _empleados.indexWhere((e) => e.idEmpleado == idEmpleado);
+              if (index != -1) {
+                _empleados[index] = _empleados[index].copyWith(activo: activoActualizado);
+                debugPrint('✅ Estado sincronizado localmente: ${_empleados[index].nombreUsuario} = ${_empleados[index].activo}');
+              }
+            });
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  activoActualizado
+                      ? '✅ Usuario activado correctamente'
+                      : '⚠️ Usuario desactivado correctamente',
+                ),
+                backgroundColor: activoActualizado ? Colors.green : Colors.orange,
+                duration: const Duration(seconds: 2),
               ),
-              backgroundColor: activoActualizado ? Colors.green : Colors.orange,
-              duration: const Duration(seconds: 2),
-            ),
-          );
+            );
+          }
         }
       } catch (e) {
         debugPrint('⚠️ Error al actualizar por ID: $e');
         debugPrint('📤 Intentando actualizar por nombre_usuario como alternativa...');
         
-        // Método 2: Intentar actualizar por nombre_usuario
-        final responsePorNombre = await supabaseClient
-            .from('t_empleados')
-            .update({'activo': nuevoEstado})
-            .eq('nombre_usuario', nombreUsuario)
-            .select('id_empleado, nombre_usuario, activo');
-        
-        debugPrint('📥 Respuesta de actualización (por nombre): $responsePorNombre');
-        
-        if (responsePorNombre.isEmpty) {
+        try {
+          // Método alternativo: Actualizar por nombre_usuario
+          await supabaseClient
+              .from('t_empleados')
+              .update({'activo': nuevoEstado})
+              .eq('nombre_usuario', nombreUsuario);
+          
+          // Esperar y verificar
+          await Future.delayed(const Duration(milliseconds: 300));
+          
+          final verificacion = await supabaseClient
+              .from('t_empleados')
+              .select('id_empleado, nombre_usuario, activo')
+              .eq('nombre_usuario', nombreUsuario)
+              .maybeSingle();
+          
+          if (verificacion == null) {
+            throw Exception('No se pudo verificar el cambio en la base de datos');
+          }
+          
+          // Parsear el valor de activo
+          bool activoActualizado = false;
+          final activoValue = verificacion['activo'];
+          if (activoValue != null) {
+            if (activoValue is bool) {
+              activoActualizado = activoValue;
+            } else if (activoValue is String) {
+              activoActualizado = activoValue.toLowerCase() == 'true' || activoValue == '1';
+            } else if (activoValue is int) {
+              activoActualizado = activoValue == 1;
+            }
+          }
+          
+          // Verificar que el cambio se aplicó correctamente
+          if (activoActualizado != nuevoEstado) {
+            throw Exception('El estado no se actualizó correctamente. Esperado: $nuevoEstado, Obtenido: $activoActualizado');
+          }
+          
+          // Actualizar el estado local
+          if (mounted) {
+            setState(() {
+              final index = _empleados.indexWhere((e) => e.nombreUsuario == nombreUsuario);
+              if (index != -1) {
+                _empleados[index] = _empleados[index].copyWith(activo: activoActualizado);
+                debugPrint('✅ Estado sincronizado localmente: ${_empleados[index].nombreUsuario} = ${_empleados[index].activo}');
+              }
+            });
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  activoActualizado
+                      ? '✅ Usuario activado correctamente'
+                      : '⚠️ Usuario desactivado correctamente',
+                ),
+                backgroundColor: activoActualizado ? Colors.green : Colors.orange,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        } catch (e2) {
+          debugPrint('❌ Error en método alternativo: $e2');
           throw Exception('No se pudo actualizar el usuario ni por ID ni por nombre. Error original: $e');
         }
-        
-        final updatedUser = responsePorNombre.first;
-        debugPrint('✅ Usuario actualizado por nombre: ${updatedUser}');
-        
-        // Parsear el valor de activo
-        bool activoActualizado = false;
-        final activoValue = updatedUser['activo'];
-        if (activoValue != null) {
-          if (activoValue is bool) {
-            activoActualizado = activoValue;
-          } else if (activoValue is String) {
-            activoActualizado = activoValue.toLowerCase() == 'true' || activoValue == '1';
-          } else if (activoValue is int) {
-            activoActualizado = activoValue == 1;
-          }
-        }
-        
-        // Verificar que el cambio se aplicó correctamente
-        if (activoActualizado != nuevoEstado) {
-          throw Exception('El estado no se actualizó correctamente. Esperado: $nuevoEstado, Obtenido: $activoActualizado');
-        }
-        
-        // Actualizar el estado local
-        if (mounted) {
-          setState(() {
-            final index = _empleados.indexWhere((e) => e.nombreUsuario == nombreUsuario);
-            if (index != -1) {
-              _empleados[index] = _empleados[index].copyWith(activo: activoActualizado);
-            }
-          });
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                activoActualizado
-                    ? '✅ Usuario activado correctamente'
-                    : '⚠️ Usuario desactivado correctamente',
-              ),
-              backgroundColor: activoActualizado ? Colors.green : Colors.orange,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       debugPrint('❌ Error al cambiar estado: $e');
-      debugPrint('❌ Stack trace: $stackTrace');
       
       // Revertir el cambio local si falló
       if (mounted) {

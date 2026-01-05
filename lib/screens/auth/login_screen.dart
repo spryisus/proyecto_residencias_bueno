@@ -164,6 +164,30 @@ class _LoginScreenState extends State<LoginScreen> {
         throw 'Usuario sin permisos suficientes';
       }
 
+      // Autenticar en Supabase Auth para que las políticas RLS funcionen
+      // Usamos un usuario de servicio o el email del usuario
+      try {
+        // Opción 1: Intentar autenticar con un usuario de servicio
+        // (más seguro y no requiere crear usuarios individuales)
+        const serviceEmail = 'service@telmex.local';
+        const servicePassword = 'ServiceAuth2024!'; // Cambiar por una contraseña segura
+        
+        try {
+          await supabase.auth.signInWithPassword(
+            email: serviceEmail,
+            password: servicePassword,
+          );
+          debugPrint('✅ Autenticado en Supabase Auth con usuario de servicio');
+        } catch (serviceError) {
+          debugPrint('⚠️ No se pudo autenticar con usuario de servicio: $serviceError');
+          debugPrint('⚠️ Las políticas RLS pueden no funcionar correctamente');
+          debugPrint('⚠️ Solución: Crear un usuario de servicio en Supabase Auth con email: $serviceEmail');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Error al autenticar en Supabase Auth: $e');
+        debugPrint('⚠️ Continuando con login local...');
+      }
+
       // Guardar sesión
       await _saveSession(empleadoId, nombreUsuario);
 
