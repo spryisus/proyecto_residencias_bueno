@@ -35,10 +35,25 @@ class Empleado {
   }
 
   factory Empleado.fromJson(Map<String, dynamic> json) {
+    // Manejar el campo activo de forma robusta
+    bool activo = false;
+    final activoValue = json['activo'];
+    if (activoValue != null) {
+      if (activoValue is bool) {
+        activo = activoValue;
+      } else if (activoValue is String) {
+        // Si viene como string, convertir a bool
+        activo = activoValue.toLowerCase() == 'true' || activoValue == '1';
+      } else if (activoValue is int) {
+        // Si viene como int (0 o 1), convertir a bool
+        activo = activoValue == 1;
+      }
+    }
+    
     return Empleado(
       idEmpleado: json['id_empleado'] as String,
       nombreUsuario: json['nombre_usuario'] as String,
-      activo: json['activo'] as bool,
+      activo: activo,
       creadoEn: DateTime.parse(json['creado_en'] as String),
     );
   }

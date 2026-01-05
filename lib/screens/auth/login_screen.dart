@@ -132,8 +132,10 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       // Verificar que el usuario esté activo
-      if (empleado['activo'] != true) {
-        throw 'Usuario inactivo en el sistema';
+      // El campo activo puede ser true, false o null
+      final activo = empleado['activo'];
+      if (activo == null || activo == false) {
+        throw 'Usuario temporalmente desactivado. Contacte al administrador para más información.';
       }
 
       // Validar la contraseña

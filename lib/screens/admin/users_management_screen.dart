@@ -80,17 +80,27 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
           .select('*')
           .order('creado_en', ascending: false);
 
+      debugPrint('📥 Empleados cargados desde BD: ${response.length}');
+      
       final empleados = (response as List)
-          .map((json) => Empleado.fromJson(json))
+          .map((json) {
+            debugPrint('📋 Parseando empleado: ${json['nombre_usuario']}, activo: ${json['activo']} (tipo: ${json['activo'].runtimeType})');
+            return Empleado.fromJson(json);
+          })
           .toList();
 
       if (mounted) {
         setState(() {
           _empleados = empleados;
+          debugPrint('✅ Estado actualizado con ${_empleados.length} empleados');
+          // Log del estado de cada empleado
+          for (var emp in _empleados) {
+            debugPrint('  - ${emp.nombreUsuario}: activo=${emp.activo}');
+          }
         });
       }
     } catch (e) {
-      debugPrint('Error al cargar empleados: $e');
+      debugPrint('❌ Error al cargar empleados: $e');
       rethrow;
     }
   }
@@ -159,20 +169,27 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
       final passwordHash = BCrypt.hashpw(password, BCrypt.gensalt());
       
       // 1. Insertar en t_empleados
-      await supabaseClient
+      debugPrint('📤 Creando usuario: $nombreUsuario');
+      final empleadoCreado = await supabaseClient
           .from('t_empleados')
           .insert({
             'id_empleado': idEmpleado,
             'nombre_usuario': nombreUsuario,
             'contrasena': passwordHash,
             'activo': true,
-          });
+          })
+          .select('id_empleado, nombre_usuario, activo')
+          .single();
+      
+      debugPrint('✅ Usuario creado en BD: $empleadoCreado');
       
       // 2. Asignar roles en t_empleado_rol
       final rolesSeleccionados = _selectedRoles.entries
           .where((entry) => entry.value)
           .map((entry) => entry.key)
           .toList();
+      
+      debugPrint('📤 Asignando ${rolesSeleccionados.length} roles al usuario');
       
       // Obtener los IDs de los roles seleccionados
       for (final nombreRol in rolesSeleccionados) {
@@ -181,6 +198,8 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
           orElse: () => throw 'Rol $nombreRol no encontrado',
         );
         
+        debugPrint('  - Asignando rol: ${rol.nombre} (ID: ${rol.idRol})');
+        
         await supabaseClient
             .from('t_empleado_rol')
             .insert({
@@ -188,6 +207,8 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
               'id_rol': rol.idRol,
             });
       }
+      
+      debugPrint('✅ Roles asignados correctamente');
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -228,32 +249,204 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
   Future<void> _toggleUserStatus(Empleado empleado) async {
     try {
       final nuevoEstado = !empleado.activo;
+      final idEmpleado = empleado.idEmpleado;
+      final nombreUsuario = empleado.nombreUsuario;
       
-      await supabaseClient
+      debugPrint('🔄 Cambiando estado de usuario $nombreUsuario');
+      debugPrint('   ID Empleado: $idEmpleado (tipo: ${idEmpleado.runtimeType})');
+      debugPrint('   Estado actual: ${empleado.activo}');
+      debugPrint('   Nuevo estado: $nuevoEstado');
+      
+      // Verificar que el usuario existe antes de actualizar
+      debugPrint('🔍 Verificando existencia del usuario en BD...');
+      final usuarioExistente = await supabaseClient
           .from('t_empleados')
-          .update({'activo': nuevoEstado})
-          .eq('id_empleado', empleado.idEmpleado);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              nuevoEstado
-                  ? 'Usuario activado'
-                  : 'Usuario desactivado',
-            ),
-            backgroundColor: nuevoEstado ? Colors.green : Colors.orange,
-          ),
-        );
-        // Recargar datos para reflejar el cambio
-        await _loadData();
+          .select('id_empleado, nombre_usuario, activo')
+          .eq('id_empleado', idEmpleado)
+          .maybeSingle();
+      
+      if (usuarioExistente == null) {
+        // Intentar buscar por nombre_usuario como alternativa
+        debugPrint('⚠️ No se encontró por ID, intentando por nombre_usuario...');
+        final usuarioPorNombre = await supabaseClient
+            .from('t_empleados')
+            .select('id_empleado, nombre_usuario, activo')
+            .eq('nombre_usuario', nombreUsuario)
+            .maybeSingle();
+        
+        if (usuarioPorNombre == null) {
+          throw Exception('Usuario no encontrado en la base de datos. ID: $idEmpleado, Usuario: $nombreUsuario');
+        }
+        
+        debugPrint('✅ Usuario encontrado por nombre: ${usuarioPorNombre['nombre_usuario']}');
+        debugPrint('   ID en BD: ${usuarioPorNombre['id_empleado']}');
+        debugPrint('   Estado actual en BD: ${usuarioPorNombre['activo']}');
+      } else {
+        debugPrint('✅ Usuario encontrado en BD: ${usuarioExistente['nombre_usuario']}');
+        debugPrint('   Estado actual en BD: ${usuarioExistente['activo']}');
       }
-    } catch (e) {
+      
+      // Actualizar el estado local inmediatamente para feedback visual instantáneo
       if (mounted) {
+        setState(() {
+          final index = _empleados.indexWhere((e) => e.idEmpleado == idEmpleado);
+          if (index != -1) {
+            _empleados[index] = _empleados[index].copyWith(activo: nuevoEstado);
+            debugPrint('✅ Estado actualizado localmente (optimista)');
+          }
+        });
+      }
+      
+      // Intentar actualizar usando el ID primero
+      debugPrint('📤 Intentando actualizar por ID: id_empleado=$idEmpleado, activo=$nuevoEstado');
+      
+      try {
+        // Método 1: Actualizar por ID con .select() para obtener respuesta
+        final response = await supabaseClient
+            .from('t_empleados')
+            .update({'activo': nuevoEstado})
+            .eq('id_empleado', idEmpleado)
+            .select('id_empleado, nombre_usuario, activo');
+        
+        debugPrint('📥 Respuesta de actualización (por ID): $response');
+        
+        if (response.isEmpty) {
+          throw Exception('La actualización por ID no devolvió resultados');
+        }
+        
+        final updatedUser = response.first;
+        debugPrint('✅ Usuario actualizado por ID: ${updatedUser}');
+        
+        // Parsear el valor de activo
+        bool activoActualizado = false;
+        final activoValue = updatedUser['activo'];
+        if (activoValue != null) {
+          if (activoValue is bool) {
+            activoActualizado = activoValue;
+          } else if (activoValue is String) {
+            activoActualizado = activoValue.toLowerCase() == 'true' || activoValue == '1';
+          } else if (activoValue is int) {
+            activoActualizado = activoValue == 1;
+          }
+        }
+        
+        debugPrint('✅ Estado confirmado en BD: $activoActualizado');
+        
+        // Verificar que el cambio se aplicó correctamente
+        if (activoActualizado != nuevoEstado) {
+          throw Exception('El estado no se actualizó correctamente. Esperado: $nuevoEstado, Obtenido: $activoActualizado');
+        }
+        
+        // Actualizar el estado local con el valor confirmado de la BD
+        if (mounted) {
+          setState(() {
+            final index = _empleados.indexWhere((e) => e.idEmpleado == idEmpleado);
+            if (index != -1) {
+              _empleados[index] = _empleados[index].copyWith(activo: activoActualizado);
+              debugPrint('✅ Estado sincronizado localmente: ${_empleados[index].nombreUsuario} = ${_empleados[index].activo}');
+            }
+          });
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                activoActualizado
+                    ? '✅ Usuario activado correctamente'
+                    : '⚠️ Usuario desactivado correctamente',
+              ),
+              backgroundColor: activoActualizado ? Colors.green : Colors.orange,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        debugPrint('⚠️ Error al actualizar por ID: $e');
+        debugPrint('📤 Intentando actualizar por nombre_usuario como alternativa...');
+        
+        // Método 2: Intentar actualizar por nombre_usuario
+        final responsePorNombre = await supabaseClient
+            .from('t_empleados')
+            .update({'activo': nuevoEstado})
+            .eq('nombre_usuario', nombreUsuario)
+            .select('id_empleado, nombre_usuario, activo');
+        
+        debugPrint('📥 Respuesta de actualización (por nombre): $responsePorNombre');
+        
+        if (responsePorNombre.isEmpty) {
+          throw Exception('No se pudo actualizar el usuario ni por ID ni por nombre. Error original: $e');
+        }
+        
+        final updatedUser = responsePorNombre.first;
+        debugPrint('✅ Usuario actualizado por nombre: ${updatedUser}');
+        
+        // Parsear el valor de activo
+        bool activoActualizado = false;
+        final activoValue = updatedUser['activo'];
+        if (activoValue != null) {
+          if (activoValue is bool) {
+            activoActualizado = activoValue;
+          } else if (activoValue is String) {
+            activoActualizado = activoValue.toLowerCase() == 'true' || activoValue == '1';
+          } else if (activoValue is int) {
+            activoActualizado = activoValue == 1;
+          }
+        }
+        
+        // Verificar que el cambio se aplicó correctamente
+        if (activoActualizado != nuevoEstado) {
+          throw Exception('El estado no se actualizó correctamente. Esperado: $nuevoEstado, Obtenido: $activoActualizado');
+        }
+        
+        // Actualizar el estado local
+        if (mounted) {
+          setState(() {
+            final index = _empleados.indexWhere((e) => e.nombreUsuario == nombreUsuario);
+            if (index != -1) {
+              _empleados[index] = _empleados[index].copyWith(activo: activoActualizado);
+            }
+          });
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                activoActualizado
+                    ? '✅ Usuario activado correctamente'
+                    : '⚠️ Usuario desactivado correctamente',
+              ),
+              backgroundColor: activoActualizado ? Colors.green : Colors.orange,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error al cambiar estado: $e');
+      debugPrint('❌ Stack trace: $stackTrace');
+      
+      // Revertir el cambio local si falló
+      if (mounted) {
+        setState(() {
+          final index = _empleados.indexWhere((e) => e.idEmpleado == empleado.idEmpleado);
+          if (index != -1) {
+            _empleados[index] = _empleados[index].copyWith(activo: empleado.activo);
+            debugPrint('↩️ Cambio revertido localmente');
+          }
+        });
+        
+        String errorMessage = 'Error al cambiar estado: $e';
+        
+        // Mensajes más específicos según el tipo de error
+        if (e.toString().contains('permission') || e.toString().contains('RLS') || e.toString().contains('row-level security')) {
+          errorMessage = 'Error de permisos: No tienes permisos para actualizar usuarios. Verifica las políticas RLS en Supabase.';
+        } else if (e.toString().contains('not found') || e.toString().contains('no encontrado')) {
+          errorMessage = 'Usuario no encontrado en la base de datos.';
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al cambiar estado: $e'),
+            content: Text('❌ $errorMessage'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -286,33 +479,61 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
     if (confirm != true) return;
 
     try {
+      debugPrint('🗑️ Eliminando usuario: ${empleado.nombreUsuario} (${empleado.idEmpleado})');
+      
       // 1. Eliminar roles asociados (t_empleado_rol)
-      await supabaseClient
+      debugPrint('📤 Eliminando roles asociados...');
+      final rolesEliminados = await supabaseClient
           .from('t_empleado_rol')
           .delete()
-          .eq('id_empleado', empleado.idEmpleado);
+          .eq('id_empleado', empleado.idEmpleado)
+          .select();
+      
+      debugPrint('✅ Roles eliminados: ${rolesEliminados.length}');
       
       // 2. Eliminar empleado (t_empleados)
-      await supabaseClient
+      debugPrint('📤 Eliminando empleado de t_empleados...');
+      final empleadoEliminado = await supabaseClient
           .from('t_empleados')
           .delete()
-          .eq('id_empleado', empleado.idEmpleado);
+          .eq('id_empleado', empleado.idEmpleado)
+          .select('id_empleado, nombre_usuario');
+      
+      if (empleadoEliminado.isEmpty) {
+        throw Exception('No se pudo eliminar el usuario. No se encontró el registro.');
+      }
+      
+      debugPrint('✅ Usuario eliminado: ${empleadoEliminado.first}');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Usuario eliminado exitosamente'),
+            content: Text('✅ Usuario eliminado exitosamente'),
             backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
           ),
         );
         await _loadData();
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error al eliminar usuario: $e');
+      debugPrint('❌ Stack trace: $stackTrace');
+      
       if (mounted) {
+        String errorMessage = 'Error al eliminar usuario: $e';
+        
+        // Mensajes más específicos según el tipo de error
+        if (e.toString().contains('permission') || e.toString().contains('RLS') || e.toString().contains('row-level security')) {
+          errorMessage = 'Error de permisos: No tienes permisos para eliminar usuarios. Verifica las políticas RLS en Supabase.';
+        } else if (e.toString().contains('foreign key') || e.toString().contains('constraint')) {
+          errorMessage = 'No se puede eliminar el usuario porque tiene datos relacionados en otras tablas.';
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al eliminar usuario: $e'),
+            content: Text('❌ $errorMessage'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
