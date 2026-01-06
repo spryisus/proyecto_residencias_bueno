@@ -70,3 +70,4 @@ COMMENT ON FUNCTION convertir_fecha_numerica(TEXT) IS
 -- SELECT convertir_fecha_numerica('180115'); -- Debería retornar: 2018-01-15
 -- ============================================
 
+

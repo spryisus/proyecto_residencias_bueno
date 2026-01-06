@@ -29,3 +29,4 @@ COMMENT ON COLUMN public.t_bitacora_envios.cobo IS 'Campo COBO de la bitácora';
 -- Deberías ver: column_name = 'cobo', data_type = 'text', is_nullable = 'YES'
 -- ============================================
 
+

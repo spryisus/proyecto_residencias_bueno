@@ -11,7 +11,10 @@ class ExcelServiceConfig {
   // CONFIGURACIÓN DE AMBIENTES
   // ============================================
   
-  /// URL del servidor de Excel en producción (actualizar con tu URL de Render/Railway/etc)
+  /// URL del servidor de Excel en producción (Render/Railway/etc)
+  /// 
+  /// ⚠️ URL DE RENDER GUARDADA PARA PRODUCCIÓN:
+  /// 'https://generador-excel.onrender.com'
   /// 
   /// Ejemplos:
   /// - Render.com: 'https://excel-generator-service.onrender.com'
@@ -30,13 +33,25 @@ class ExcelServiceConfig {
   static const String androidEmulatorUrl = 'http://10.0.2.2:8001';
   
   // ============================================
+  // CONFIGURACIÓN DE MODO (LOCAL vs PRODUCCIÓN)
+  // ============================================
+  
+  /// Cambiar a `false` para usar URL local durante pruebas
+  /// Cambiar a `true` para usar URL de producción (Render)
+  /// 
+  /// ⚠️ IMPORTANTE: Durante pruebas locales, mantener en `false`
+  /// Para producción, cambiar a `true` y actualizar `productionUrl` arriba
+  static const bool useProductionByDefault = false;
+  
+  // ============================================
   // MÉTODOS PARA OBTENER LA URL CORRECTA
   // ============================================
   
   /// Obtiene la URL del servicio según la plataforma y ambiente
   /// 
   /// [useProduction] - Si es true, usa la URL de producción (cloud)
-  ///                   Si es false o null, detecta automáticamente
+  ///                   Si es false, usa URL local
+  ///                   Si es null, usa el valor de `useProductionByDefault`
   static String getServiceUrl({bool? useProduction}) {
     // Si se especifica explícitamente usar producción
     if (useProduction == true) {
@@ -48,51 +63,11 @@ class ExcelServiceConfig {
       return _getLocalUrl();
     }
     
-    // Detección automática según la plataforma
-    if (kIsWeb) {
-      // Web: usar producción por defecto (puedes cambiar con variable de entorno para desarrollo)
-      const envUrl = String.fromEnvironment('EXCEL_SERVICE_URL');
-      if (envUrl.isNotEmpty) {
-        return envUrl;
-      }
-      // Si no hay variable de entorno, usar producción
+    // Usar el valor por defecto configurado (local o producción)
+    if (useProductionByDefault) {
       return productionUrl;
     } else {
-      // Móvil o desktop
-      try {
-        if (Platform.isAndroid) {
-          // Verificar si es emulador
-          if (_isAndroidEmulator()) {
-            return androidEmulatorUrl;
-          }
-          // Dispositivo físico: usar producción por defecto (puedes cambiar con variable de entorno)
-          const envUrl = String.fromEnvironment('EXCEL_SERVICE_URL');
-          if (envUrl.isNotEmpty) {
-            return envUrl;
-          }
-          // Si no hay variable de entorno, usar producción
-          return productionUrl;
-        } else if (Platform.isIOS) {
-          // iOS: usar producción por defecto (puedes cambiar con variable de entorno)
-          const envUrl = String.fromEnvironment('EXCEL_SERVICE_URL');
-          if (envUrl.isNotEmpty) {
-            return envUrl;
-          }
-          // Si no hay variable de entorno, usar producción
-          return productionUrl;
-        } else {
-          // Desktop (Windows, Linux, macOS): usar producción por defecto (puedes cambiar con variable de entorno)
-          const envUrl = String.fromEnvironment('EXCEL_SERVICE_URL');
-          if (envUrl.isNotEmpty) {
-            return envUrl;
-          }
-          // Si no hay variable de entorno, usar producción
-          return productionUrl;
-        }
-      } catch (e) {
-        // Si hay error, usar producción como fallback
-        return productionUrl;
-      }
+      return _getLocalUrl();
     }
   }
   

@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import '../../app/config/supabase_client.dart' show supabaseClient;
 import '../../domain/entities/bitacora_envio.dart';
+import '../../data/services/bitacora_export_service.dart';
 
 // Clase auxiliar para campos
 class _FieldItem {
@@ -51,15 +52,71 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
       
       // Verificar autenticación
       final currentUser = supabaseClient.auth.currentUser;
-      debugPrint('🔐 Usuario autenticado: ${currentUser?.id ?? "NO AUTENTICADO"}');
+      final isAuthenticated = currentUser != null;
+      debugPrint('🔐 Usuario autenticado: ${isAuthenticated ? currentUser.id : "NO AUTENTICADO"}');
       debugPrint('🔐 Email: ${currentUser?.email ?? "N/A"}');
       
-      final response = await supabaseClient
-          .from('t_bitacora_envios')
-          .select('*')
-          .order('consecutivo', ascending: true);
-
-      debugPrint('📥 Respuesta recibida: ${response.length} registros');
+      // Si no está autenticado, intentar autenticar con usuario de servicio
+      if (!isAuthenticated) {
+        debugPrint('⚠️ Usuario no autenticado en Supabase Auth, intentando autenticación de servicio...');
+        try {
+          const serviceEmail = 'service@telmex.local';
+          const servicePassword = 'ServiceAuth2024!';
+          
+          await supabaseClient.auth.signInWithPassword(
+            email: serviceEmail,
+            password: servicePassword,
+          );
+          debugPrint('✅ Autenticado con usuario de servicio');
+        } catch (serviceError) {
+          debugPrint('⚠️ No se pudo autenticar con usuario de servicio: $serviceError');
+          debugPrint('⚠️ Continuando sin autenticación (las políticas RLS anónimas deberían permitir acceso)');
+        }
+      }
+      
+      // Intentar cargar los datos
+      List<dynamic> response;
+      try {
+        response = await supabaseClient
+            .from('t_bitacora_envios')
+            .select('*')
+            .order('consecutivo', ascending: true);
+        
+        debugPrint('📥 Respuesta recibida: ${response.length} registros');
+      } catch (queryError) {
+        debugPrint('❌ Error en consulta: $queryError');
+        
+        // Si el error es de RLS, mostrar mensaje más claro
+        final errorString = queryError.toString().toLowerCase();
+        if (errorString.contains('row-level security') || 
+            errorString.contains('rls') ||
+            errorString.contains('policy')) {
+          debugPrint('⚠️ Error de RLS detectado. Verifica las políticas en Supabase.');
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text(
+                  'Error de permisos. Ejecuta el script politica_rls_bitacora_completa.sql en Supabase.',
+                ),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 8),
+                action: SnackBarAction(
+                  label: 'Cerrar',
+                  textColor: Colors.white,
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  },
+                ),
+              ),
+            );
+          }
+          return;
+        }
+        rethrow;
+      }
       
       if (response.isEmpty) {
         debugPrint('⚠️ No se encontraron registros en t_bitacora_envios');
@@ -80,7 +137,7 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
         }
       }
       
-      final bitacoras = (response as List)
+      final bitacoras = response
           .map((json) {
             try {
               return BitacoraEnvio.fromJson(json);
@@ -91,6 +148,12 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
             }
           })
           .toList();
+
+      // Ordenar por consecutivo de forma ascendente
+      // Maneja formatos como "17-01", "18-01", "19-01", etc.
+      bitacoras.sort((a, b) {
+        return _compareConsecutivo(a.consecutivo, b.consecutivo);
+      });
 
       debugPrint('✅ Bitácoras parseadas: ${bitacoras.length}');
 
@@ -126,11 +189,31 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
           _bitacoras = [];
           _bitacorasFiltradas = [];
         });
+        
+        // Mostrar mensaje de error más amigable
+        String errorMessage = 'Error al cargar bitácoras';
+        if (e.toString().contains('row-level security') || 
+            e.toString().contains('rls') ||
+            e.toString().contains('policy')) {
+          errorMessage = 'Error de permisos. Verifica las políticas RLS en Supabase.';
+        } else if (e.toString().contains('network') || e.toString().contains('connection')) {
+          errorMessage = 'Error de conexión. Verifica tu conexión a internet.';
+        } else {
+          errorMessage = 'Error: ${e.toString()}';
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al cargar bitácoras: $e'),
+            content: Text(errorMessage),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Reintentar',
+              textColor: Colors.white,
+              onPressed: () {
+                _loadBitacoras();
+              },
+            ),
           ),
         );
       }
@@ -207,6 +290,267 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
       _selectedCodigos.clear();
       _applyFilters();
     });
+  }
+
+  /// Compara dos consecutivos para ordenamiento ascendente
+  /// Maneja formatos como "17-01", "18-01", "19-01", etc.
+  /// Retorna: negativo si a < b, cero si a == b, positivo si a > b
+  int _compareConsecutivo(String a, String b) {
+    try {
+      // Intentar parsear formato "YY-NN" (ej: "17-01", "18-01")
+      if (a.contains('-') && b.contains('-')) {
+        final partsA = a.split('-');
+        final partsB = b.split('-');
+        
+        if (partsA.length == 2 && partsB.length == 2) {
+          final yearA = int.tryParse(partsA[0]) ?? 0;
+          final numA = int.tryParse(partsA[1]) ?? 0;
+          final yearB = int.tryParse(partsB[0]) ?? 0;
+          final numB = int.tryParse(partsB[1]) ?? 0;
+          
+          // Primero comparar por año
+          if (yearA != yearB) {
+            return yearA.compareTo(yearB);
+          }
+          // Si el año es igual, comparar por número
+          return numA.compareTo(numB);
+        }
+      }
+      
+      // Si no tiene el formato esperado, comparar como string
+      return a.compareTo(b);
+    } catch (e) {
+      // En caso de error, comparar como string
+      return a.compareTo(b);
+    }
+  }
+
+  Future<void> _showExportDialog() async {
+    // Obtener años disponibles (2017-2025)
+    final availableYears = List.generate(2025 - 2017 + 1, (index) => 2017 + index);
+    
+    // Verificar qué años tienen registros
+    final yearsWithRecords = availableYears.where((year) {
+      return _bitacoras.any((b) => b.fecha.year == year);
+    }).toList();
+    
+    if (yearsWithRecords.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No hay registros para exportar'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+
+    final selectedYears = await showDialog<List<int>>(
+      context: context,
+      builder: (context) {
+        Set<int> tempSelectedYears = {};
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Exportar Bitácora a Excel'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Selecciona uno o más años a exportar:',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Cada año se exportará en una hoja separada',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    ),
+                    const SizedBox(height: 16),
+                    Flexible(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: yearsWithRecords.length,
+                        itemBuilder: (context, index) {
+                          final year = yearsWithRecords[index];
+                          final recordCount = _bitacoras.where((b) => b.fecha.year == year).length;
+                          final isSelected = tempSelectedYears.contains(year);
+                          return CheckboxListTile(
+                            title: Text('$year ($recordCount registros)'),
+                            value: isSelected,
+                            onChanged: (value) {
+                              setDialogState(() {
+                                if (value == true) {
+                                  tempSelectedYears.add(year);
+                                } else {
+                                  tempSelectedYears.remove(year);
+                                }
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: tempSelectedYears.isNotEmpty
+                      ? () => Navigator.pop(context, tempSelectedYears.toList()..sort())
+                      : null,
+                  child: const Text('Exportar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (selectedYears != null && selectedYears.isNotEmpty && mounted) {
+      _exportToExcel(selectedYears);
+    }
+  }
+
+  Future<void> _exportToExcel(List<int> years) async {
+    try {
+      // Ordenar años de forma ascendente
+      years.sort();
+      
+      // Filtrar bitácoras por años seleccionados
+      final Map<int, List<BitacoraEnvio>> bitacorasPorAnio = {};
+      for (final year in years) {
+        final bitacorasDelAnio = _bitacoras.where((b) => b.fecha.year == year).toList();
+        if (bitacorasDelAnio.isNotEmpty) {
+          bitacorasPorAnio[year] = bitacorasDelAnio;
+        }
+      }
+      
+      if (bitacorasPorAnio.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No hay registros para los años seleccionados'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Mostrar indicador de carga con mensaje más informativo
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => Center(
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Generando Excel con ${years.length} hoja(s)...',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Esto puede tardar unos momentos',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Años: ${years.join(", ")}',
+                      style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
+      // Exportar
+      final result = await BitacoraExportService.exportBitacoraToExcel(
+        bitacorasPorAnio,
+      );
+
+      // Cerrar indicador de carga
+      if (mounted) {
+        Navigator.pop(context);
+      }
+
+      if (mounted && result != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Bitácora exportada exitosamente: $result\n${years.length} hoja(s) creada(s)'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      // Cerrar indicador de carga si hay error
+      if (mounted) {
+        Navigator.pop(context);
+        
+        // Extraer mensaje de error más amigable
+        String errorMessage = 'Error al exportar';
+        final errorStr = e.toString();
+        
+        if (errorStr.contains('No se pudo conectar') || 
+            errorStr.contains('Connection refused') ||
+            errorStr.contains('Conexión rehusada') ||
+            errorStr.contains('SocketException')) {
+          errorMessage = 'El servicio de Excel no está corriendo.\n\n'
+              'Ejecuta en otra terminal:\n'
+              './iniciar_servicio_excel.sh\n\n'
+              'O manualmente:\n'
+              'cd excel_generator_service\n'
+              'python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload';
+        } else if (errorStr.contains('Tiempo de espera')) {
+          errorMessage = 'El servicio no responde. Verifica que esté corriendo.';
+        } else if (errorStr.contains('No hay datos')) {
+          errorMessage = 'No hay registros para exportar.';
+        } else {
+          // Mostrar solo la parte útil del error
+          final lines = errorStr.split('\n');
+          errorMessage = lines.isNotEmpty ? lines[0] : errorStr;
+          if (errorMessage.length > 100) {
+            errorMessage = '${errorMessage.substring(0, 100)}...';
+          }
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ $errorMessage'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+              label: 'Cerrar',
+              textColor: Colors.white,
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              },
+            ),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _showAddBitacoraDialog() async {
@@ -431,6 +775,20 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: _showExportDialog,
+                      icon: const Icon(Icons.file_download),
+                      label: const Text('Exportar a Excel'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[700],
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),

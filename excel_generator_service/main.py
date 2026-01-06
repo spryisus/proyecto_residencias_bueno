@@ -66,6 +66,22 @@ TEMPLATE_PATH_SICOR = (
         else os.path.join(PROJECT_ASSETS_DIR, "plantilla_sicor.xlsx")
     )
 )
+# Bitácora: buscar primero en templates del servicio (nota: el archivo se llama platilla_bitacora.xlsx)
+TEMPLATE_PATH_BITACORA = (
+    os.path.join(TEMPLATES_DIR, "platilla_bitacora.xlsx")
+    if os.path.exists(os.path.join(TEMPLATES_DIR, "platilla_bitacora.xlsx"))
+    else (
+        os.path.join(TEMPLATES_DIR, "plantilla_bitacora.xlsx")
+        if os.path.exists(os.path.join(TEMPLATES_DIR, "plantilla_bitacora.xlsx"))
+        else (
+            os.path.join(PROJECT_ASSETS_DIR, "templates", "platilla_bitacora.xlsx")
+            if os.path.exists(os.path.join(PROJECT_ASSETS_DIR, "templates", "platilla_bitacora.xlsx"))
+            else os.path.join(PROJECT_ASSETS_DIR, "templates", "plantilla_bitacora.xlsx")
+            if os.path.exists(os.path.join(PROJECT_ASSETS_DIR, "templates", "plantilla_bitacora.xlsx"))
+            else os.path.join(PROJECT_ASSETS_DIR, "platilla_bitacora.xlsx")
+        )
+    )
+)
 
 LAST_GENERATED_FILE_CONTENT: bytes | None = None
 LAST_GENERATED_FILENAME: str | None = None
@@ -997,6 +1013,255 @@ async def generate_sicor_excel(request: Request):
 
     except Exception as e:
         logger.exception("Error generating SICOR excel")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/generate-bitacora-excel")
+async def generate_bitacora_excel(request: Request):
+    payload = await request.json()
+    
+    # Nuevo formato: years_data es una lista de objetos con 'year' e 'items'
+    years_data: List[Dict[str, Any]] = payload.get("years_data") or []
+    
+    # Compatibilidad con formato antiguo (un solo año)
+    if not years_data:
+        items: List[Dict[str, Any]] = payload.get("items") or []
+        year = payload.get("year", datetime.now().year)
+        if items:
+            years_data = [{"year": year, "items": items}]
+    
+    if not isinstance(years_data, list) or len(years_data) == 0:
+        raise HTTPException(status_code=400, detail="years_data must be a non-empty list")
+    
+    # Ordenar años de forma ascendente
+    years_data.sort(key=lambda x: x.get("year", 0))
+
+    try:
+        # Crear un nuevo workbook
+        wb = Workbook()
+        # Eliminar la hoja por defecto
+        wb.remove(wb.active)
+        
+        # Usar plantilla si existe - CARGAR SOLO UNA VEZ para optimizar
+        template_exists = _ensure_template(TEMPLATE_PATH_BITACORA)
+        template_wb = None
+        template_ws = None
+        template_merged_ranges = None
+        template_column_widths = None
+        template_row_heights = None
+        
+        if template_exists:
+            logger.info(f"📄 Cargando plantilla una vez: {TEMPLATE_PATH_BITACORA}")
+            template_wb = openpyxl.load_workbook(TEMPLATE_PATH_BITACORA)
+            template_ws = template_wb.active
+            template_merged_ranges = list(template_ws.merged_cells.ranges)
+            template_column_widths = {col: template_ws.column_dimensions[col].width for col in template_ws.column_dimensions}
+            template_row_heights = {row: template_ws.row_dimensions[row].height for row in template_ws.row_dimensions}
+        
+        # Procesar cada año
+        total_years = len(years_data)
+        for idx, year_data in enumerate(years_data, start=1):
+            year = year_data.get("year")
+            items: List[Dict[str, Any]] = year_data.get("items") or []
+            
+            if not items:
+                logger.warning(f"⚠️ No hay items para el año {year}, saltando...")
+                continue
+            
+            logger.info(f"📝 [{idx}/{total_years}] Procesando año {year} con {len(items)} registros")
+            
+            # Crear o copiar hoja para este año
+            if template_exists and template_ws:
+                # Crear nueva hoja con el nombre del año
+                ws = wb.create_sheet(title=str(year))
+                
+                # Copiar todas las celdas de la plantilla (reutilizando la plantilla cargada)
+                for row in template_ws.iter_rows():
+                    for cell in row:
+                        new_cell = ws.cell(row=cell.row, column=cell.column)
+                        new_cell.value = cell.value
+                        if cell.has_style:
+                            new_cell.font = cell.font.copy() if cell.font else None
+                            new_cell.fill = cell.fill.copy() if cell.fill else None
+                            new_cell.border = cell.border.copy() if cell.border else None
+                            new_cell.alignment = cell.alignment.copy() if cell.alignment else None
+                            new_cell.number_format = cell.number_format
+                
+                # Copiar merged cells (reutilizando los rangos guardados)
+                for merged_range in template_merged_ranges:
+                    ws.merge_cells(str(merged_range))
+                
+                # Copiar anchos de columna (reutilizando los anchos guardados)
+                for col, width in template_column_widths.items():
+                    ws.column_dimensions[col].width = width
+                
+                # Copiar altos de fila (reutilizando los altos guardados)
+                for row, height in template_row_heights.items():
+                    ws.row_dimensions[row].height = height
+            else:
+                # Crear hoja nueva sin plantilla
+                ws = wb.create_sheet(title=str(year))
+            
+            # Actualizar la fecha en el encabezado si existe (similar a SICOR)
+            try:
+                # Buscar celda con fecha en las primeras filas
+                for row in range(1, 5):
+                    for col in range(1, 10):
+                        cell = ws.cell(row=row, column=col)
+                        if cell.value and isinstance(cell.value, str):
+                            cell_text = str(cell.value)
+                            # Si contiene "fecha" o un patrón de fecha, actualizar
+                            if "fecha" in cell_text.lower() or re.search(r'\d{2}/\d{2}/\d{4}', cell_text):
+                                now = datetime.now()
+                                fecha_actual = now.strftime("%d/%m/%Y")
+                                pattern = r'\s*-\s*\d{2}/\d{2}/\d{4}\s*$'
+                                if re.search(pattern, cell_text):
+                                    nuevo_texto = re.sub(pattern, f' - {fecha_actual}', cell_text)
+                                else:
+                                    nuevo_texto = f"{cell_text.rstrip()} - {fecha_actual}"
+                                cell.value = nuevo_texto
+                                logger.info(f"📅 Fecha actualizada en encabezado (año {year}): {fecha_actual}")
+                                break
+            except Exception as e:
+                logger.warning(f"⚠️ No se pudo actualizar la fecha en el encabezado (año {year}): {e}")
+            
+            # Los datos empiezan en B4 (fila 4, columna B = columna 2)
+            start_row = 4
+            start_col = 2  # Columna B
+            
+            # Buscar la primera fila vacía desde la fila 4 (B4)
+            # Si B4 ya tiene datos, buscar la siguiente fila vacía
+            while ws.cell(row=start_row, column=start_col).value is not None:
+                start_row += 1
+            
+            logger.info(f"📝 Escribiendo {len(items)} registros de bitácora (año {year}) desde la fila {start_row}, columna B")
+            
+            # Obtener el formato de la fila 4 (B4) como referencia si existe
+            reference_row = 4
+            reference_cells = {}
+            # 13 columnas empezando desde B: Consecutivo, Fecha, Técnico, Tarjeta, Código, Serie, Folio, Envía, Recibe, Guía, Anexos, COBO (INCIDENTE), Observaciones
+            for col in range(start_col, start_col + 13):
+                ref_cell = ws.cell(row=reference_row, column=col)
+                reference_cells[col] = {
+                    'font': ref_cell.font.copy() if ref_cell.font else None,
+                    'fill': ref_cell.fill.copy() if ref_cell.fill else None,
+                    'border': ref_cell.border.copy() if ref_cell.border else None,
+                    'alignment': ref_cell.alignment.copy() if ref_cell.alignment else None,
+                    'number_format': ref_cell.number_format,
+                }
+            
+            # Escribir cada registro de bitácora en una fila empezando desde B4
+            for idx, item in enumerate(items, start=0):
+                row = start_row + idx
+                
+                # Mapear campos según la plantilla empezando desde columna B (2)
+                # Columna B (2): Consecutivo
+                _safe_set_cell_value(ws, row, 2, item.get("consecutivo", ""))
+                # Columna C (3): Fecha
+                fecha_str = item.get("fecha", "")
+                if fecha_str:
+                    try:
+                        # Convertir de YYYY-MM-DD a DD/MM/YYYY si es necesario
+                        fecha_date = datetime.strptime(fecha_str, "%Y-%m-%d")
+                        fecha_formateada = fecha_date.strftime("%d/%m/%Y")
+                        _safe_set_cell_value(ws, row, 3, fecha_formateada)
+                    except:
+                        _safe_set_cell_value(ws, row, 3, fecha_str)
+                else:
+                    _safe_set_cell_value(ws, row, 3, "")
+                # Columna D (4): Técnico
+                _safe_set_cell_value(ws, row, 4, item.get("tecnico", ""))
+                # Columna E (5): Tarjeta
+                _safe_set_cell_value(ws, row, 5, item.get("tarjeta", ""))
+                # Columna F (6): Código
+                _safe_set_cell_value(ws, row, 6, item.get("codigo", ""))
+                # Columna G (7): Serie
+                _safe_set_cell_value(ws, row, 7, item.get("serie", ""))
+                # Columna H (8): Folio
+                _safe_set_cell_value(ws, row, 8, item.get("folio", ""))
+                # Columna I (9): Envía
+                _safe_set_cell_value(ws, row, 9, item.get("envia", ""))
+                # Columna J (10): Recibe
+                _safe_set_cell_value(ws, row, 10, item.get("recibe", ""))
+                # Columna K (11): Guía
+                _safe_set_cell_value(ws, row, 11, item.get("guia", ""))
+                # Columna L (12): Anexos
+                _safe_set_cell_value(ws, row, 12, item.get("anexos", ""))
+                # Columna M (13): COBO (en la plantilla se llama "INCIDENTE")
+                _safe_set_cell_value(ws, row, 13, item.get("cobo", ""))
+                # Columna N (14): Observaciones (última columna)
+                _safe_set_cell_value(ws, row, 14, item.get("observaciones", ""))
+                
+                # Aplicar formato de la fila de referencia (B4) a cada celda
+                for col in range(start_col, start_col + 13):
+                    cell = ws.cell(row=row, column=col)
+                    ref_format = reference_cells.get(col, {})
+                    
+                    if ref_format.get('font'):
+                        cell.font = ref_format['font']
+                    if ref_format.get('fill'):
+                        cell.fill = ref_format['fill']
+                    if ref_format.get('border'):
+                        cell.border = ref_format['border']
+                    if ref_format.get('alignment'):
+                        cell.alignment = ref_format['alignment']
+                    if ref_format.get('number_format'):
+                        cell.number_format = ref_format['number_format']
+            
+            # Si no hay plantilla, crear estructura básica para esta hoja (solo encabezados)
+            if not template_exists:
+                # Título
+                title_cell = ws.cell(row=1, column=1, value=f'BITÁCORA DE ENVÍOS - AÑO {year}')
+                title_cell.font = Font(bold=True, size=14)
+                title_cell.alignment = Alignment(horizontal='center', vertical='center')
+                
+                # Encabezados (fila 3, empezando desde columna B)
+                headers = ['Consecutivo', 'Fecha', 'Técnico', 'Tarjeta', 'Código', 'Serie', 'Folio', 
+                          'Envía', 'Recibe', 'Guía', 'Anexos', 'INCIDENTE', 'Observaciones']
+                for col, header in enumerate(headers, start=2):  # Empezar desde columna B (2)
+                    cell = ws.cell(row=3, column=col, value=header)
+                    _apply_cell_style(cell, bold=True, center=True)
+        
+        # Las hojas ya están ordenadas porque years_data está ordenado
+        # Pero por si acaso, reordenarlas explícitamente
+        # Crear un diccionario con las hojas
+        sheets_dict = {ws.title: ws for ws in wb.worksheets}
+        sorted_sheet_names = sorted(sheets_dict.keys(), key=lambda x: int(x) if x.isdigit() else 9999)
+        
+        # Reordenar las hojas moviendo cada una a su posición correcta
+        for i, sheet_name in enumerate(sorted_sheet_names):
+            if i == 0:
+                continue  # La primera hoja ya está en su lugar
+            sheet = sheets_dict[sheet_name]
+            current_index = wb.index(sheet)
+            target_index = i
+            if current_index != target_index:
+                # Mover la hoja a la posición correcta
+                wb.move_sheet(sheet, offset=target_index - current_index)
+
+        file_bytes = _save_workbook_to_bytes(wb)
+        if not file_bytes:
+            raise RuntimeError("Generated file is empty")
+
+        global LAST_GENERATED_FILE_CONTENT, LAST_GENERATED_FILENAME
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        # Generar nombre de archivo con los años exportados
+        years_list = sorted([str(yd.get("year", "")) for yd in years_data])
+        years_str = "_".join(years_list)
+        filename = f"bitacora_envio_{years_str}_{timestamp}.xlsx"
+        LAST_GENERATED_FILE_CONTENT = file_bytes
+        LAST_GENERATED_FILENAME = filename
+        
+        logger.info(f"📊 Archivo generado con {len(wb.worksheets)} hoja(s): {[ws.title for ws in wb.worksheets]}")
+
+        logger.info(f"📦 Tamaño del archivo generado: {len(file_bytes)} bytes")
+
+        return Response(content=file_bytes,
+                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f"attachment; filename=\"{filename}\""})
+
+    except Exception as e:
+        logger.exception("Error generating bitacora excel")
         raise HTTPException(status_code=500, detail=str(e))
 
 
