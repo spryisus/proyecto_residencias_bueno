@@ -302,16 +302,30 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
       debugPrint('📤 Intentando actualizar por ID: id_empleado=$idEmpleado, activo=$nuevoEstado');
       
       try {
-        // Paso 1: Hacer el UPDATE y verificar que se aplicó
-        // Usar .select() para obtener confirmación de que el UPDATE funcionó
+        // Paso 1: Hacer el UPDATE sin select para evitar error PGRST116
+        // Luego verificar con un SELECT separado
+        try {
+          await supabaseClient
+              .from('t_empleados')
+              .update({'activo': nuevoEstado})
+              .eq('id_empleado', idEmpleado);
+          
+          debugPrint('✅ UPDATE ejecutado sin select');
+        } catch (updateError) {
+          // Si el UPDATE falla, puede ser por RLS
+          debugPrint('⚠️ Error en UPDATE directo: $updateError');
+          // Continuar con la verificación para ver si realmente se actualizó
+        }
+        
+        // Paso 1.5: Verificar inmediatamente con SELECT
+        await Future.delayed(const Duration(milliseconds: 200));
         final updateResponse = await supabaseClient
             .from('t_empleados')
-            .update({'activo': nuevoEstado})
-            .eq('id_empleado', idEmpleado)
             .select('id_empleado, activo')
+            .eq('id_empleado', idEmpleado)
             .maybeSingle();
         
-        debugPrint('✅ UPDATE ejecutado. Respuesta: $updateResponse');
+        debugPrint('✅ Verificación después de UPDATE. Respuesta: $updateResponse');
         
         // Si el UPDATE devuelve datos, verificar inmediatamente
         if (updateResponse != null) {

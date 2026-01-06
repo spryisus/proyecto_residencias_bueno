@@ -162,6 +162,8 @@ class BitacoraEnvio {
     // Intentar formato DD/MM/YY o DD/MM/YYYY
     if (fechaStr.contains('/')) {
       final partes = fechaStr.split('/');
+      
+      // Caso 1: Formato estándar DD/MM/YY o DD/MM/YYYY (3 partes)
       if (partes.length == 3) {
         try {
           final dia = int.parse(partes[0]);
@@ -174,7 +176,53 @@ class BitacoraEnvio {
             anio = anio <= 30 ? 2000 + anio : 1900 + anio;
           }
 
-          return DateTime(anio, mes, dia);
+          if (mes >= 1 && mes <= 12 && dia >= 1 && dia <= 31) {
+            return DateTime(anio, mes, dia);
+          }
+        } catch (_) {}
+      }
+      
+      // Caso 2: Formato DD/MMYY (2 partes, donde la segunda contiene mes y año concatenados)
+      // Ejemplo: "19/0320" = 19/03/20, "14/1124" = 14/11/24
+      if (partes.length == 2) {
+        try {
+          final dia = int.parse(partes[0]);
+          final mesAnioStr = partes[1];
+          
+          // Si la segunda parte tiene 4 dígitos, asumir MMYY
+          // Si tiene 3 dígitos, asumir MYY o MMY
+          if (mesAnioStr.length == 4) {
+            // Formato MMYY: "0320" = mes 03, año 20
+            final mes = int.parse(mesAnioStr.substring(0, 2));
+            final anio = int.parse(mesAnioStr.substring(2, 4));
+            final anioCompleto = anio <= 30 ? 2000 + anio : 1900 + anio;
+            
+            if (mes >= 1 && mes <= 12 && dia >= 1 && dia <= 31) {
+              return DateTime(anioCompleto, mes, dia);
+            }
+          } else if (mesAnioStr.length == 3) {
+            // Intentar MYY primero (1 dígito mes, 2 dígitos año)
+            try {
+              final mes = int.parse(mesAnioStr.substring(0, 1));
+              final anio = int.parse(mesAnioStr.substring(1, 3));
+              final anioCompleto = anio <= 30 ? 2000 + anio : 1900 + anio;
+              
+              if (mes >= 1 && mes <= 12 && dia >= 1 && dia <= 31) {
+                return DateTime(anioCompleto, mes, dia);
+              }
+            } catch (_) {}
+            
+            // Intentar MMY (2 dígitos mes, 1 dígito año - menos común)
+            try {
+              final mes = int.parse(mesAnioStr.substring(0, 2));
+              final anio = int.parse(mesAnioStr.substring(2, 3));
+              final anioCompleto = 2000 + anio; // Asumir 2000-2009
+              
+              if (mes >= 1 && mes <= 12 && dia >= 1 && dia <= 31) {
+                return DateTime(anioCompleto, mes, dia);
+              }
+            } catch (_) {}
+          }
         } catch (_) {}
       }
     }

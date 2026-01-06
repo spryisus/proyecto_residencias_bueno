@@ -325,9 +325,17 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
     }
   }
 
+  // Método helper para obtener años disponibles (2017 hasta año actual + 1)
+  List<int> _getAvailableYears() {
+    final currentYear = DateTime.now().year;
+    final startYear = 2017;
+    final endYear = currentYear + 1; // Incluir el año siguiente
+    return List.generate(endYear - startYear + 1, (index) => startYear + index);
+  }
+
   Future<void> _showExportDialog() async {
-    // Obtener años disponibles (2017-2025)
-    final availableYears = List.generate(2025 - 2017 + 1, (index) => 2017 + index);
+    // Obtener años disponibles dinámicamente
+    final availableYears = _getAvailableYears();
     
     // Verificar qué años tienen registros
     final yearsWithRecords = availableYears.where((year) {
@@ -569,28 +577,50 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
       final prefs = await SharedPreferences.getInstance();
       final nombreUsuario = prefs.getString('nombre_usuario') ?? 'Sistema';
 
-      // Obtener el siguiente consecutivo
-      // Si hay bitácoras existentes, obtener el máximo numérico y sumar 1
-      // Si no hay, empezar en 1
-      String nuevoConsecutivo = '1';
+      // Obtener el siguiente consecutivo basado en el año de la fecha
+      // Formato: "YY-NN" donde YY es el año (2 dígitos) y NN es el número secuencial
+      final anioBitacora = bitacora.fecha.year;
+      final anioCorto = anioBitacora % 100; // Obtener últimos 2 dígitos (ej: 2026 -> 26)
+      
+      String nuevoConsecutivo = '$anioCorto-01'; // Por defecto: primer consecutivo del año
+      
       if (_bitacoras.isNotEmpty) {
-        final numerosConsecutivos = _bitacoras
-            .map((b) {
-              // Intentar extraer el número del consecutivo (puede ser "17-01" o "1")
-              final partes = b.consecutivo.split('-');
-              if (partes.isNotEmpty) {
-                final num = int.tryParse(partes[0]);
-                return num ?? 0;
-              }
-              final num = int.tryParse(b.consecutivo);
-              return num ?? 0;
-            })
-            .where((n) => n > 0)
+        // Filtrar bitácoras del mismo año
+        final bitacorasDelAnio = _bitacoras
+            .where((b) => b.fecha.year == anioBitacora)
             .toList();
         
-        if (numerosConsecutivos.isNotEmpty) {
-          final maxNum = numerosConsecutivos.reduce((a, b) => a > b ? a : b);
-          nuevoConsecutivo = '${maxNum + 1}';
+        if (bitacorasDelAnio.isNotEmpty) {
+          // Buscar el máximo número de consecutivo para este año
+          int maxNum = 0;
+          
+          for (final b in bitacorasDelAnio) {
+            // Intentar parsear formato "YY-NN"
+            if (b.consecutivo.contains('-')) {
+              final partes = b.consecutivo.split('-');
+              if (partes.length == 2) {
+                // Verificar que el año coincida
+                final anioConsecutivo = int.tryParse(partes[0]);
+                if (anioConsecutivo == anioCorto) {
+                  final num = int.tryParse(partes[1]);
+                  if (num != null && num > maxNum) {
+                    maxNum = num;
+                  }
+                }
+              }
+            } else {
+              // Si no tiene formato "YY-NN", verificar si es solo un número
+              // y si la fecha coincide con el año actual
+              final num = int.tryParse(b.consecutivo);
+              if (num != null && num > maxNum) {
+                // Si es un número simple y la fecha es del mismo año, considerarlo
+                maxNum = num;
+              }
+            }
+          }
+          
+          // Generar nuevo consecutivo: año-número siguiente
+          nuevoConsecutivo = '$anioCorto-${(maxNum + 1).toString().padLeft(2, '0')}';
         }
       }
 
@@ -639,44 +669,61 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
         backgroundColor: const Color(0xFF003366),
         foregroundColor: Colors.white,
       ),
-      body: Column(
-        children: [
-          // Selector de años
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.grey.withOpacity(0.1),
-                  spreadRadius: 1,
-                  blurRadius: 2,
-                  offset: const Offset(0, 1),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isMobile = constraints.maxWidth < 600;
+          
+          if (isMobile) {
+            // INTERFAZ MÓVIL - Diseño completamente vertical
+            return _buildMobileLayout();
+          } else {
+            // INTERFAZ ESCRITORIO - Diseño original
+            return _buildDesktopLayout();
+          }
+        },
+      ),
+    );
+  }
+
+  // Interfaz específica para móvil
+  Widget _buildMobileLayout() {
+    return Column(
+      children: [
+        // Selector de años
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.grey[100],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                spreadRadius: 1,
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Filtrar por año:',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[700],
                 ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Filtrar por año:',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[700],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
+              ),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
                       // Botón "Todos"
                       _buildYearChip(null, 'Todos'),
                       const SizedBox(width: 8),
-                      // Años del 2017 al 2025
-                      ...List.generate(2025 - 2017 + 1, (index) {
-                        final year = 2017 + index;
+                      // Años dinámicos (2017 hasta año actual + 1)
+                      ..._getAvailableYears().map((year) {
                         return Padding(
                           padding: const EdgeInsets.only(right: 8),
                           child: _buildYearChip(year, year.toString()),
@@ -684,163 +731,357 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
                       }),
                     ],
                   ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-          // Filtros por código y botón agregar
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                'Filtrar por código:',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.grey[700],
-                                ),
+        ),
+        // Filtros por código - MÓVIL: Todo en columna
+        Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Título y botón limpiar en fila
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Filtrar por código:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                  if (_selectedCodigos.isNotEmpty)
+                    TextButton.icon(
+                      onPressed: _clearCodigoFilters,
+                      icon: const Icon(Icons.clear, size: 16),
+                      label: const Text('Limpiar'),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // Chips de códigos
+              SizedBox(
+                height: 50,
+                child: Scrollbar(
+                  controller: _codigosScrollController,
+                  thumbVisibility: true,
+                  thickness: 8,
+                  radius: const Radius.circular(4),
+                  child: SingleChildScrollView(
+                    controller: _codigosScrollController,
+                    scrollDirection: Axis.horizontal,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: Row(
+                      children: _getCodigosDisponibles().map((codigo) {
+                        final isSelected = _selectedCodigos.contains(codigo);
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: FilterChip(
+                            label: Text(codigo),
+                            selected: isSelected,
+                            onSelected: (_) => _toggleCodigo(codigo),
+                            selectedColor: Colors.blue[300],
+                            checkmarkColor: Colors.white,
+                            labelStyle: TextStyle(
+                              color: isSelected ? Colors.white : Colors.grey[700],
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              fontSize: 12,
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              side: BorderSide(
+                                color: isSelected 
+                                    ? Colors.blue[700]! 
+                                    : Colors.grey[300]!,
+                                width: isSelected ? 2 : 1,
                               ),
-                              if (_selectedCodigos.isNotEmpty) ...[
-                                const SizedBox(width: 8),
-                                TextButton.icon(
-                                  onPressed: _clearCodigoFilters,
-                                  icon: const Icon(Icons.clear, size: 16),
-                                  label: const Text('Limpiar filtros'),
-                                  style: TextButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
+                            ),
                           ),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            height: 50,
-                            child: Scrollbar(
-                              controller: _codigosScrollController,
-                              thumbVisibility: true,
-                              thickness: 8,
-                              radius: const Radius.circular(4),
-                              child: SingleChildScrollView(
-                                controller: _codigosScrollController,
-                                scrollDirection: Axis.horizontal,
-                                physics: const AlwaysScrollableScrollPhysics(),
-                                child: Row(
-                                  children: _getCodigosDisponibles().map((codigo) {
-                                    final isSelected = _selectedCodigos.contains(codigo);
-                                    return Padding(
-                                      padding: const EdgeInsets.only(right: 8),
-                                      child: FilterChip(
-                                        label: Text(codigo),
-                                        selected: isSelected,
-                                        onSelected: (_) => _toggleCodigo(codigo),
-                                        selectedColor: Colors.blue[300],
-                                        checkmarkColor: Colors.white,
-                                        labelStyle: TextStyle(
-                                          color: isSelected ? Colors.white : Colors.grey[700],
-                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                          fontSize: 12,
-                                        ),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 6,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(16),
-                                          side: BorderSide(
-                                            color: isSelected 
-                                                ? Colors.blue[700]! 
-                                                : Colors.grey[300]!,
-                                            width: isSelected ? 2 : 1,
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }).toList(),
-                                ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Botones en columna para móvil
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _showExportDialog,
+                      icon: const Icon(Icons.file_download, size: 18),
+                      label: const Text('Exportar'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[700],
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _showAddBitacoraDialog,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Nueva'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF003366),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        // Lista de bitácoras
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _bitacorasFiltradas.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.book_outlined,
+                            size: 80,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _selectedYear == null && _selectedCodigos.isEmpty
+                                ? 'No hay bitácoras registradas'
+                                : 'No se encontraron resultados con los filtros seleccionados',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.grey[600],
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    )
+                  : _buildCardView(),
+        ),
+      ],
+    );
+  }
+
+  // Interfaz específica para escritorio (diseño original)
+  Widget _buildDesktopLayout() {
+    return Column(
+      children: [
+        // Selector de años
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.grey[100],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                spreadRadius: 1,
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Filtrar por año:',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      // Botón "Todos"
+                      _buildYearChip(null, 'Todos'),
+                      const SizedBox(width: 8),
+                      // Años dinámicos (2017 hasta año actual + 1)
+                      ..._getAvailableYears().map((year) {
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: _buildYearChip(year, year.toString()),
+                        );
+                      }),
+                    ],
+                  ),
+              ),
+            ],
+          ),
+        ),
+        // Filtros por código y botón agregar - ESCRITORIO
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Filtrar por código:',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                        if (_selectedCodigos.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          TextButton.icon(
+                            onPressed: _clearCodigoFilters,
+                            icon: const Icon(Icons.clear, size: 16),
+                            label: const Text('Limpiar filtros'),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
                               ),
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      onPressed: _showExportDialog,
-                      icon: const Icon(Icons.file_download),
-                      label: const Text('Exportar a Excel'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green[700],
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      onPressed: _showAddBitacoraDialog,
-                      icon: const Icon(Icons.add),
-                      label: const Text('Nueva Bitácora'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF003366),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          // Tabla de bitácoras
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _bitacorasFiltradas.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.book_outlined,
-                              size: 80,
-                              color: Colors.grey[400],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              _selectedYear == null && _selectedCodigos.isEmpty
-                                  ? 'No hay bitácoras registradas'
-                                  : 'No se encontraron resultados con los filtros seleccionados',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.grey[600],
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 50,
+                          child: Scrollbar(
+                            controller: _codigosScrollController,
+                            thumbVisibility: true,
+                            thickness: 8,
+                            radius: const Radius.circular(4),
+                            child: SingleChildScrollView(
+                              controller: _codigosScrollController,
+                              scrollDirection: Axis.horizontal,
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              child: Row(
+                                children: _getCodigosDisponibles().map((codigo) {
+                                  final isSelected = _selectedCodigos.contains(codigo);
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: FilterChip(
+                                      label: Text(codigo),
+                                      selected: isSelected,
+                                      onSelected: (_) => _toggleCodigo(codigo),
+                                      selectedColor: Colors.blue[300],
+                                      checkmarkColor: Colors.white,
+                                      labelStyle: TextStyle(
+                                        color: isSelected ? Colors.white : Colors.grey[700],
+                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                        fontSize: 12,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 6,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                        side: BorderSide(
+                                          color: isSelected 
+                                              ? Colors.blue[700]! 
+                                              : Colors.grey[300]!,
+                                          width: isSelected ? 2 : 1,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
                               ),
                             ),
-                          ],
+                          ),
                         ),
-                      )
-                    : _buildCardView(),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed: _showExportDialog,
+                    icon: const Icon(Icons.file_download),
+                    label: const Text('Exportar a Excel'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green[700],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed: _showAddBitacoraDialog,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Nueva Bitácora'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF003366),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+        // Tabla de bitácoras
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _bitacorasFiltradas.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.book_outlined,
+                            size: 80,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _selectedYear == null && _selectedCodigos.isEmpty
+                                ? 'No hay bitácoras registradas'
+                                : 'No se encontraron resultados con los filtros seleccionados',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : _buildCardView(),
+        ),
+      ],
     );
   }
 
@@ -890,84 +1131,167 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Encabezado con consecutivo y fecha (adaptado para móvil)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Row(
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isMobile = constraints.maxWidth < 600;
+                    
+                    if (isMobile) {
+                      // Header móvil: Todo en columna
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Primera fila: Consecutivo y botones
+                          Row(
                             children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF003366),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  'CONS. ${bitacora.consecutivo}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
+                              Expanded(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF003366),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    'CONS. ${bitacora.consecutivo}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                icon: const Icon(Icons.edit, size: 20),
+                                color: Colors.blue,
+                                onPressed: () => _showEditBitacoraDialog(bitacora),
+                                tooltip: 'Editar',
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, size: 20),
+                                color: Colors.red,
+                                onPressed: () => _showDeleteConfirmation(bitacora),
+                                tooltip: 'Eliminar',
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          // Segunda fila: Fecha
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.calendar_today,
+                                size: 16,
+                                color: Colors.grey[600],
+                              ),
+                              const SizedBox(width: 4),
                               Expanded(
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.calendar_today,
-                                      size: 16,
-                                      color: Colors.grey[600],
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Flexible(
-                                      child: SelectableText(
-                                        _formatDate(bitacora.fecha),
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w500,
-                                          color: Colors.grey[700],
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                child: Text(
+                                  _formatDate(bitacora.fecha),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.grey[700],
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit, size: 20),
-                              color: Colors.blue,
-                              onPressed: () => _showEditBitacoraDialog(bitacora),
-                              tooltip: 'Editar',
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
+                        ],
+                      );
+                    } else {
+                      // Header escritorio: Todo en una fila
+                      return Row(
+                        children: [
+                          // Consecutivo con tamaño flexible
+                          Flexible(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF003366),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'CONS. ${bitacora.consecutivo}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
                             ),
-                            const SizedBox(width: 4),
-                            IconButton(
-                              icon: const Icon(Icons.delete, size: 20),
-                              color: Colors.red,
-                              onPressed: () => _showDeleteConfirmation(bitacora),
-                              tooltip: 'Eliminar',
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
+                          ),
+                          const SizedBox(width: 8),
+                          // Fecha con tamaño flexible
+                          Flexible(
+                            flex: 2,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.calendar_today,
+                                  size: 16,
+                                  color: Colors.grey[600],
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    _formatDate(bitacora.fecha),
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.grey[700],
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
+                          ),
+                          // Botones de acción (siempre visibles)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit, size: 20),
+                                color: Colors.blue,
+                                onPressed: () => _showEditBitacoraDialog(bitacora),
+                                tooltip: 'Editar',
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                              ),
+                              const SizedBox(width: 4),
+                              IconButton(
+                                icon: const Icon(Icons.delete, size: 20),
+                                color: Colors.red,
+                                onPressed: () => _showDeleteConfirmation(bitacora),
+                                tooltip: 'Eliminar',
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    }
+                  },
                 ),
                 const SizedBox(height: 12),
                 const Divider(height: 1),
