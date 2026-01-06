@@ -30,8 +30,10 @@ static const bool useProductionByDefault = true;
 
 ## 📅 Fecha de Última Modificación
 - **Fecha**: 05 de enero de 2026
-- **Motivo**: Cambio a modo local para pruebas de exportación de bitácora
+- **Estado Actual**: ✅ **PRODUCCIÓN** - Usando Render (`useProductionByDefault = true`)
+- **Último cambio a producción**: 05 de enero de 2026
 
 ## ⚠️ Recordatorio
-Después de terminar las pruebas locales, cambiar `useProductionByDefault` a `true` para usar Render en producción.
+- **Para pruebas locales**: Cambiar `useProductionByDefault` a `false`
+- **Para producción**: Mantener `useProductionByDefault` en `true` (estado actual)
 

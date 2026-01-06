@@ -41,7 +41,7 @@ class ExcelServiceConfig {
   /// 
   /// ⚠️ IMPORTANTE: Durante pruebas locales, mantener en `false`
   /// Para producción, cambiar a `true` y actualizar `productionUrl` arriba
-  static const bool useProductionByDefault = false;
+  static const bool useProductionByDefault = true; // ✅ PRODUCCIÓN: Usando Render
   
   // ============================================
   // MÉTODOS PARA OBTENER LA URL CORRECTA
