@@ -104,6 +104,35 @@ class BitacoraEnvio {
     };
   }
 
+  /// Método para convertir a JSON excluyendo campos auto-generados
+  /// Úsalo cuando vayas a INSERTAR un nuevo registro
+  Map<String, dynamic> toJsonForInsert() {
+    final json = <String, dynamic>{
+      'consecutivo': consecutivo.toString(),
+      'fecha': fecha.toIso8601String().split('T')[0], // Solo la fecha sin hora
+      'tecnico': tecnico,
+      'tarjeta': tarjeta,
+      'codigo': codigo,
+      'serie': serie,
+      'folio': folio,
+      'envia': envia,
+      'recibe': recibe,
+      'guia': guia,
+      'anexos': anexos,
+      'observaciones': observaciones,
+      'cobo': cobo,
+      'creado_en': creadoEn.toIso8601String(),
+      'actualizado_en': actualizadoEn.toIso8601String(),
+      'creado_por': creadoPor,
+      'actualizado_por': actualizadoPor,
+    };
+    
+    // Remover campos null para que Supabase use los valores por defecto
+    json.removeWhere((key, value) => value == null);
+    
+    return json;
+  }
+
   factory BitacoraEnvio.fromJson(Map<String, dynamic> json) {
     return BitacoraEnvio(
       idBitacora: json['id_bitacora'] as int?,

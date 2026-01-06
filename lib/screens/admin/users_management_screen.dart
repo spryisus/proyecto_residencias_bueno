@@ -297,6 +297,30 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
         });
       }
       
+      // Verificar autenticación antes de intentar UPDATE
+      final currentUser = supabaseClient.auth.currentUser;
+      final isAuthenticated = currentUser != null;
+      debugPrint('🔐 Estado de autenticación: ${isAuthenticated ? "AUTENTICADO" : "NO AUTENTICADO"}');
+      debugPrint('🔐 Usuario Auth: ${currentUser?.email ?? "N/A"}');
+      
+      // Si no está autenticado, intentar autenticar con usuario de servicio
+      if (!isAuthenticated) {
+        debugPrint('⚠️ No autenticado en Supabase Auth, intentando autenticación de servicio...');
+        try {
+          const serviceEmail = 'service@telmex.local';
+          const servicePassword = 'ServiceAuth2024!';
+          
+          await supabaseClient.auth.signInWithPassword(
+            email: serviceEmail,
+            password: servicePassword,
+          );
+          debugPrint('✅ Autenticado con usuario de servicio');
+        } catch (authError) {
+          debugPrint('❌ Error al autenticar: $authError');
+          throw Exception('No se pudo autenticar en Supabase. Las políticas RLS pueden estar bloqueando la actualización. Error: $authError');
+        }
+      }
+      
       // Método mejorado: Actualizar primero, luego verificar con SELECT separado
       // Esto funciona mejor en aplicaciones móviles donde .update().select() puede fallar
       debugPrint('📤 Intentando actualizar por ID: id_empleado=$idEmpleado, activo=$nuevoEstado');
@@ -305,16 +329,33 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
         // Paso 1: Hacer el UPDATE sin select para evitar error PGRST116
         // Luego verificar con un SELECT separado
         try {
-          await supabaseClient
+          final updateResult = await supabaseClient
               .from('t_empleados')
               .update({'activo': nuevoEstado})
-              .eq('id_empleado', idEmpleado);
+              .eq('id_empleado', idEmpleado)
+              .select('id_empleado, activo')
+              .maybeSingle();
           
-          debugPrint('✅ UPDATE ejecutado sin select');
+          // Si el UPDATE devuelve null, puede ser que no se actualizó ninguna fila (RLS bloqueó)
+          if (updateResult == null) {
+            debugPrint('⚠️ UPDATE no devolvió resultados - posible bloqueo por RLS');
+            throw Exception('El UPDATE no se aplicó. Posible causa: políticas RLS bloqueando la actualización. Verifica que estés autenticado correctamente.');
+          }
+          
+          debugPrint('✅ UPDATE ejecutado y confirmado: $updateResult');
         } catch (updateError) {
-          // Si el UPDATE falla, puede ser por RLS
-          debugPrint('⚠️ Error en UPDATE directo: $updateError');
-          // Continuar con la verificación para ver si realmente se actualizó
+          // Si el UPDATE falla, verificar si es por RLS
+          final errorStr = updateError.toString().toLowerCase();
+          if (errorStr.contains('row-level security') || 
+              errorStr.contains('rls') || 
+              errorStr.contains('policy') ||
+              errorStr.contains('permission')) {
+            debugPrint('❌ Error de RLS detectado: $updateError');
+            throw Exception('Error de permisos: Las políticas RLS están bloqueando la actualización. Verifica que el usuario tenga permisos de administrador en Supabase.');
+          }
+          // Si es otro error, propagarlo
+          debugPrint('❌ Error en UPDATE: $updateError');
+          rethrow;
         }
         
         // Paso 1.5: Verificar inmediatamente con SELECT

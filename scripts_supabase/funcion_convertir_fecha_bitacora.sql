@@ -71,3 +71,4 @@ COMMENT ON FUNCTION convertir_fecha_numerica(TEXT) IS
 -- ============================================
 
 
+

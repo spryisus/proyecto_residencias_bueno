@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/di/injection_container.dart';
 import '../../data/local/inventory_session_storage.dart';
 import '../../domain/entities/inventory_session.dart';
@@ -6,11 +7,11 @@ import '../../domain/repositories/inventario_repository.dart';
 import '../settings/settings_screen.dart';
 import '../auth/login_screen.dart';
 import '../inventory/inventory_screen.dart';
+import '../inventory/inventory_type_selection_screen.dart';
 import '../shipments/shipments_screen.dart';
 import '../sdr/solicitud_sdr_screen.dart';
-import '../../widgets/clock_widget.dart';
 import '../../widgets/calendar_widget.dart';
-import '../../widgets/quick_stats_widget.dart';
+import '../../app/config/supabase_client.dart' show supabaseClient;
 import 'users_management_screen.dart';
 
 class AdminDashboard extends StatefulWidget {
@@ -24,24 +25,119 @@ class AdminDashboard extends StatefulWidget {
 class _AdminDashboardState extends State<AdminDashboard> {
   final InventorySessionStorage _sessionStorage = serviceLocator.get<InventorySessionStorage>();
   List<InventorySession> _sessions = [];
-  List<InventorySession> _allSessions = [];
-  bool _isLoadingSessions = true;
+  String? _userName;
+  String? _userRole;
+  int _selectedIndex = 0; // Para el sidebar
+  int _totalInventarios = 0;
+  int _pendingInventarios = 0;
+  int _activeShipments = 0;
+  int _activeUsers = 0;
+  bool _isLoadingStats = true;
 
   @override
   void initState() {
     super.initState();
+    _loadUserInfo();
     _loadSessions();
+    _loadStats();
+  }
+
+  Future<void> _loadUserInfo() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userName = prefs.getString('nombre_usuario');
+    
+    // Obtener rol del usuario
+    String? userRole = 'Usuario';
+    try {
+      final idEmpleado = prefs.getString('id_empleado');
+      if (idEmpleado != null) {
+        final roles = await supabaseClient
+            .from('t_empleado_rol')
+            .select('t_roles!inner(nombre)')
+            .eq('id_empleado', idEmpleado);
+        
+        if (roles.isNotEmpty) {
+          final roleName = roles.first['t_roles']['nombre']?.toString().toLowerCase();
+          if (roleName == 'admin') {
+            userRole = 'Administrador';
+          } else if (roleName == 'operador') {
+            userRole = 'Operador';
+          } else if (roleName == 'auditor') {
+            userRole = 'Auditor';
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error al cargar rol: $e');
+    }
+    
+    if (mounted) {
+      setState(() {
+        _userName = userName ?? 'Usuario';
+        _userRole = userRole;
+      });
+    }
+  }
+
+  Future<void> _loadStats() async {
+    setState(() {
+      _isLoadingStats = true;
+    });
+
+    try {
+      // Contar inventarios totales desde sesiones
+      final allSessions = await _sessionStorage.getAllSessions();
+      final totalInventarios = allSessions.length;
+      final pendingInventarios = allSessions.where((s) => s.status == InventorySessionStatus.pending).length;
+
+      // Contar envíos activos (bitácoras recientes)
+      try {
+        final bitacoras = await supabaseClient
+            .from('t_bitacora_envios')
+            .select('id_bitacora')
+            .limit(1000);
+        _activeShipments = bitacoras.length;
+      } catch (e) {
+        debugPrint('Error al contar envíos: $e');
+        _activeShipments = 0;
+      }
+
+      // Contar usuarios activos
+      try {
+        final usuarios = await supabaseClient
+            .from('t_empleados')
+            .select('id_empleado')
+            .eq('activo', true);
+        _activeUsers = usuarios.length;
+      } catch (e) {
+        debugPrint('Error al contar usuarios: $e');
+        _activeUsers = 0;
+      }
+
+      if (mounted) {
+        setState(() {
+          _totalInventarios = totalInventarios;
+          _pendingInventarios = pendingInventarios;
+          _isLoadingStats = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error al cargar estadísticas: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingStats = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadSessions() async {
     final sessions = await _sessionStorage.getAllSessions();
-    _allSessions = sessions;
     // Filtrar solo inventarios pendientes
     final pendingSessions = sessions.where((s) => s.status == InventorySessionStatus.pending).toList();
     if (!mounted) return;
     setState(() {
       _sessions = pendingSessions;
-      _isLoadingSessions = false;
     });
   }
 
@@ -67,29 +163,94 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    final username = widget.username;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Panel de Administración'),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _isLoadingSessions ? null : () async {
-              await _loadSessions();
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Datos actualizados'),
-                  duration: Duration(seconds: 1),
-                  backgroundColor: Colors.green,
+      body: Row(
+        children: [
+          // Sidebar permanente
+          _buildSidebar(context),
+          // Contenido principal
+          Expanded(
+            child: Column(
+              children: [
+                // Header superior
+                _buildHeader(context),
+                // Contenido scrollable
+                Expanded(
+                  child: _buildMainContent(context),
                 ),
-              );
-            },
-            tooltip: 'Refrescar',
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Container(
+      height: 70,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      child: Row(
+        children: [
+          // Logo y título
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF003366),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.inventory_2,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    'Telmex Inventarios',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF003366),
+                    ),
+                  ),
+                  Text(
+                    'Sistema de Larga Distancia',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const Spacer(),
+          // Iconos de acción
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined),
+            onPressed: () {},
+            tooltip: 'Notificaciones',
           ),
           IconButton(
-            icon: const Icon(Icons.settings),
+            icon: const Icon(Icons.settings_outlined),
             onPressed: () {
               Navigator.push(
                 context,
@@ -98,135 +259,179 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 ),
               );
             },
+            tooltip: 'Configuración',
+          ),
+          const SizedBox(width: 12),
+          // Avatar y usuario
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: const Color(0xFF003366),
+                child: Text(
+                  _userName?.substring(0, 1).toUpperCase() ?? 'U',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    _userName ?? 'Usuario',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    _userRole ?? 'Usuario',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
+    );
+  }
+
+  Widget _buildSidebar(BuildContext context) {
+    return Container(
+      width: 280,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(2, 0),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 20),
+          // Sección PRINCIPAL
+          _buildSidebarSection(
+            context,
+            'PRINCIPAL',
+            [
+              _buildSidebarItem(
+                context,
+                icon: Icons.home_outlined,
+                title: 'Dashboard',
+                isSelected: _selectedIndex == 0,
+                onTap: () => setState(() => _selectedIndex = 0),
               ),
-              child: Align(
-                alignment: Alignment.bottomLeft,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Admin',
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onPrimary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (username != null && username.isNotEmpty)
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.person, 
-                            color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7), 
-                            size: 18,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            username,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7),
-                            ),
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
+              _buildSidebarItem(
+                context,
+                icon: Icons.inventory_2_outlined,
+                title: 'Inventarios',
+                badge: _pendingInventarios > 0 ? _pendingInventarios.toString() : null,
+                badgeColor: Colors.orange,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const InventoryScreen()),
+                  );
+                },
               ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.inventory_2_outlined, size: 24),
-              title: Text(
-                'Inventario',
-                style: Theme.of(context).textTheme.titleMedium,
+              _buildSidebarItem(
+                context,
+                icon: Icons.local_shipping_outlined,
+                title: 'Envíos',
+                badge: _activeShipments > 0 ? _activeShipments.toString() : null,
+                badgeColor: Colors.orange,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ShipmentsScreen()),
+                  );
+                },
               ),
-              minVerticalPadding: 16,
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
+              _buildSidebarItem(
+                context,
+                icon: Icons.description_outlined,
+                title: 'Solicitudes SDR',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SolicitudSdrScreen()),
+                  );
+                },
+              ),
+            ],
+          ),
+          // Sección GESTIÓN
+          _buildSidebarSection(
+            context,
+            'GESTIÓN',
+            [
+              _buildSidebarItem(
+                context,
+                icon: Icons.group_outlined,
+                title: 'Usuarios',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const UsersManagementScreen()),
+                  );
+                },
+              ),
+              _buildSidebarItem(
+                context,
+                icon: Icons.analytics_outlined,
+                title: 'Actividad',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const UserActivityPage()),
+                  );
+                },
+              ),
+              _buildSidebarItem(
+                context,
+                icon: Icons.history_outlined,
+                title: 'Historial',
+                onTap: () {},
+              ),
+            ],
+          ),
+          // Sección SESIONES GUARDADAS
+          if (_sessions.isNotEmpty)
+            _buildSidebarSection(
+              context,
+              'SESIONES GUARDADAS',
+              _sessions.take(2).map((session) {
+                final isPending = session.status == InventorySessionStatus.pending;
+                return _buildSidebarItem(
                   context,
-                  MaterialPageRoute(builder: (_) => const InventoryScreen()),
+                  icon: isPending ? Icons.pause_circle_outline : Icons.check_circle_outline,
+                  title: session.categoryName,
+                  subtitle: _formatTimeAgo(session.updatedAt),
+                  iconColor: isPending ? Colors.orange : Colors.green,
+                  onTap: () => _openSession(session),
                 );
-              },
+              }).toList(),
             ),
-            ListTile(
-              leading: const Icon(Icons.local_shipping_outlined, size: 24),
-              title: Text(
-                'Envíos',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              minVerticalPadding: 16,
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ShipmentsScreen()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.group_add_outlined, size: 24),
-              title: Text(
-                'Gestión de usuarios',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              minVerticalPadding: 16,
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const UsersManagementScreen()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.analytics_outlined, size: 24),
-              title: Text(
-                'Actividad de usuarios',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              minVerticalPadding: 16,
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const UserActivityPage()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.description_outlined, size: 24),
-              title: Text(
-                'Solicitud SDR',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              minVerticalPadding: 16,
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SolicitudSdrScreen()),
-                );
-              },
-            ),
-            const Divider(height: 24),
-            ListTile(
-              leading: const Icon(Icons.logout, size: 24),
-              title: Text(
-                'Cerrar sesión',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              minVerticalPadding: 16,
+          const Spacer(),
+          // Cerrar Sesión
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: _buildSidebarItem(
+              context,
+              icon: Icons.logout,
+              title: 'Cerrar Sesión',
+              iconColor: Colors.red,
               onTap: () {
                 Navigator.pushAndRemoveUntil(
                   context,
@@ -235,319 +440,539 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 );
               },
             ),
-          ],
-        ),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Dashboard de Administrador',
-                style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Widgets en grid responsive
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWideScreen = constraints.maxWidth > 900;
-                  
-                  if (isWideScreen) {
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: Column(
-                            children: [
-                              const ClockWidget(),
-                              const SizedBox(height: 16),
-                              const QuickStatsWidget(),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          flex: 3,
-                          child: const CalendarWidget(),
-                        ),
-                      ],
-                    );
-                  } else {
-                    return Column(
-                      children: [
-                        const ClockWidget(),
-                        const SizedBox(height: 16),
-                        const CalendarWidget(),
-                        const SizedBox(height: 16),
-                        const QuickStatsWidget(),
-                      ],
-                    );
-                  }
-                },
-              ),
-              const SizedBox(height: 24),
-              _buildSessionSection(),
-              const SizedBox(height: 24),
-              Text(
-                'Accesos Rápidos',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  // Responsive: Ajustar columnas según el tamaño de pantalla
-                  int crossAxisCount = 2;
-                  double childAspectRatio = 1.2;
-                  
-                  if (constraints.maxWidth < 600) {
-                    // Móvil: 1 columna
-                    crossAxisCount = 1;
-                    childAspectRatio = 2.5;
-                  } else if (constraints.maxWidth < 900) {
-                    // Tablet: 2 columnas
-                    crossAxisCount = 2;
-                    childAspectRatio = 1.3;
-                  } else {
-                    // Desktop: 3 columnas
-                    crossAxisCount = 3;
-                    childAspectRatio = 1.1;
-                  }
-                  
-                  return GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: crossAxisCount,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: childAspectRatio,
-                    children: [
-                  _buildStatCard(
-                    context,
-                    'Inventario',
-                    'Gestionar productos y stock',
-                    Icons.inventory_2_outlined,
-                    Colors.blue,
-                    () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const InventoryScreen()),
-                      );
-                    },
-                  ),
-                  _buildStatCard(
-                    context,
-                    'Envíos',
-                    'Rastrear envíos',
-                    Icons.local_shipping_outlined,
-                    Colors.green,
-                    () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const ShipmentsScreen()),
-                      );
-                    },
-                  ),
-                  _buildStatCard(
-                    context,
-                    'Usuarios',
-                    'Gestionar empleados',
-                    Icons.group_outlined,
-                    Colors.purple,
-                    () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const UsersManagementScreen()),
-                      );
-                    },
-                    ),
-                  ],
-                );
-                },
-              ),
-            ],
           ),
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildStatCard(
-    BuildContext context,
-    String title,
-    String subtitle,
-    IconData icon,
-    Color color,
-    VoidCallback onTap,
-  ) {
-    return Card(
-      elevation: 3,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 32,
-                color: color,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                  fontSize: 12,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSessionSection() {
-    if (_isLoadingSessions) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_sessions.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
+  Widget _buildSidebarSection(BuildContext context, String title, List<Widget> items) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Inventarios guardados',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[600],
+              letterSpacing: 1.2,
+            ),
+          ),
         ),
-        const SizedBox(height: 12),
-        ..._sessions.map(_buildSessionCard),
+        ...items,
+        const SizedBox(height: 8),
       ],
     );
   }
 
-  Widget _buildSessionCard(InventorySession session) {
-    final isPending = session.status == InventorySessionStatus.pending;
-    final Color chipColor = isPending ? Colors.orange : Colors.green;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: InkWell(
-        onTap: () => _openSession(session),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: chipColor.withValues(alpha: 0.15),
-                child: Icon(
-                  isPending ? Icons.pause_circle_outline : Icons.check_circle_outline,
-                  color: chipColor,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      session.categoryName,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+  Widget _buildSidebarItem(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    String? badge,
+    Color? badgeColor,
+    Color? iconColor,
+    bool isSelected = false,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF003366).withOpacity(0.1) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: isSelected
+              ? Border.all(color: const Color(0xFF003366), width: 1)
+              : null,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: isSelected
+                  ? const Color(0xFF003366)
+                  : iconColor ?? Colors.grey[700],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                      color: isSelected ? const Color(0xFF003366) : Colors.grey[800],
                     ),
-                    const SizedBox(height: 3),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
                     Text(
-                      'Actualizado: ${_formatDate(session.updatedAt)}',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
-                        fontSize: 12,
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[600],
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                    if (isPending && session.ownerEmail != null && session.ownerEmail!.isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.email_outlined,
-                            size: 12,
-                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                          ),
-                          const SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              session.ownerEmail!,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
-                                fontStyle: FontStyle.italic,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
                   ],
-                ),
+                ],
               ),
-              const SizedBox(width: 8),
+            ),
+            if (badge != null)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: chipColor.withValues(alpha: 0.15),
+                  color: badgeColor ?? Colors.orange,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  isPending ? 'Pendiente' : 'Terminado',
-                  style: TextStyle(
-                    color: chipColor,
-                    fontWeight: FontWeight.w600,
+                  badge,
+                  style: const TextStyle(
+                    color: Colors.white,
                     fontSize: 11,
+                    fontWeight: FontWeight.bold,
                   ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatTimeAgo(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+    
+    if (difference.inDays > 0) {
+      return 'Actualizado hace ${difference.inDays}d';
+    } else if (difference.inHours > 0) {
+      return 'Actualizado hace ${difference.inHours}h';
+    } else if (difference.inMinutes > 0) {
+      return 'Actualizado hace ${difference.inMinutes}m';
+    } else {
+      return 'Actualizado ahora';
+    }
+  }
+
+  Widget _buildMainContent(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Mensaje de bienvenida
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Bienvenido, ${_userName ?? 'Usuario'} 👋',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Panel de administración - Sistema de Larga Distancia',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const InventoryTypeSelectionScreen()),
+                  );
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('Nueva Acción'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF003366),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 32),
+          // Tarjetas de estadísticas
+          _buildStatsCards(context),
+          const SizedBox(height: 32),
+          // Widgets en grid
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWideScreen = constraints.maxWidth > 900;
+              
+              if (isWideScreen) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 1,
+                      child: _buildEnhancedClockWidget(),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      flex: 2,
+                      child: const CalendarWidget(),
+                    ),
+                  ],
+                );
+              } else {
+                return Column(
+                  children: [
+                    _buildEnhancedClockWidget(),
+                    const SizedBox(height: 16),
+                    const CalendarWidget(),
+                  ],
+                );
+              }
+            },
+          ),
+          const SizedBox(height: 32),
+          // Actividad Reciente
+          _buildRecentActivity(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsCards(BuildContext context) {
+    if (_isLoadingStats) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+        final crossAxisCount = isMobile ? 1 : 4;
+        
+        return GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: crossAxisCount,
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+          childAspectRatio: isMobile ? 2.5 : 1.2,
+          children: [
+            _buildStatCard(
+              context,
+              icon: Icons.inventory_2,
+              title: 'Total Inventarios',
+              value: _totalInventarios.toString(),
+              badge: '+12%',
+              badgeColor: Colors.green,
+              iconColor: Colors.blue,
+            ),
+            _buildStatCard(
+              context,
+              icon: Icons.pending_outlined,
+              title: 'Pendientes',
+              value: _pendingInventarios.toString(),
+              badge: _pendingInventarios.toString(),
+              badgeColor: Colors.orange,
+              iconColor: Colors.orange,
+            ),
+            _buildStatCard(
+              context,
+              icon: Icons.local_shipping,
+              title: 'Envíos Activos',
+              value: _activeShipments.toString(),
+              badge: _activeShipments > 0 ? _activeShipments.toString() : null,
+              badgeColor: Colors.orange,
+              iconColor: Colors.green,
+            ),
+            _buildStatCard(
+              context,
+              icon: Icons.group,
+              title: 'Usuarios Activos',
+              value: _activeUsers.toString(),
+              badge: _activeUsers.toString(),
+              badgeColor: Colors.purple,
+              iconColor: Colors.purple,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildStatCard(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String value,
+    String? badge,
+    required Color badgeColor,
+    required Color iconColor,
+  }) {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: iconColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: iconColor, size: 24),
+                ),
+                if (badge != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: badgeColor,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      badge,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              value,
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              title,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildEnhancedClockWidget() {
+    return Card(
+      elevation: 2,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF003366),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.access_time, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                const Text(
+                  'HORA ACTUAL',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            StreamBuilder<DateTime>(
+              stream: Stream.periodic(const Duration(seconds: 1), (_) => DateTime.now()),
+              builder: (context, snapshot) {
+                final now = snapshot.data ?? DateTime.now();
+                final timeFormat = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+                return Text(
+                  timeFormat,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+            StreamBuilder<DateTime>(
+              stream: Stream.periodic(const Duration(seconds: 1), (_) => DateTime.now()),
+              builder: (context, snapshot) {
+                final now = snapshot.data ?? DateTime.now();
+                final dateFormat = '${_getDayName(now.weekday)}, ${now.day} ${_getMonthName(now.month)} ${now.year}';
+                return Text(
+                  dateFormat,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Ciudad de México, México',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getDayName(int weekday) {
+    const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+    return days[weekday - 1];
+  }
+
+  String _getMonthName(int month) {
+    const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    return months[month - 1];
+  }
+
+  Widget _buildRecentActivity(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Actividad Reciente',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            TextButton(
+              onPressed: () {},
+              child: const Text('Ver todo'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Card(
+          elevation: 2,
+          child: ListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            children: [
+              _buildActivityItem(
+                context,
+                icon: Icons.inventory_2,
+                title: 'Nuevo inventario registrado',
+                subtitle: 'Categoría: Equipos de red - Usuario: Carlos Méndez',
+                time: 'Hace 15 minutos',
+                iconColor: Colors.blue,
+              ),
+              const Divider(height: 1),
+              _buildActivityItem(
+                context,
+                icon: Icons.local_shipping,
+                title: 'Envío completado',
+                subtitle: 'Destino: Sucursal Centro',
+                time: 'Hace 2 horas',
+                iconColor: Colors.green,
+                status: 'Completado',
+                statusColor: Colors.green,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActivityItem(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required String time,
+    required Color iconColor,
+    String? status,
+    Color? statusColor,
+  }) {
+    return ListTile(
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: iconColor.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, color: iconColor, size: 20),
+      ),
+      title: Text(
+        title,
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 4),
+          Text(subtitle),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Text(
+                time,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+              if (status != null) ...[
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: statusColor?.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    status,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
       ),
     );
   }

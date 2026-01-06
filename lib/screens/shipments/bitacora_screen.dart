@@ -632,9 +632,10 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
         actualizadoPor: nombreUsuario,
       );
 
+      // Usar toJsonForInsert() para excluir id_bitacora (auto-generado)
       await supabaseClient
           .from('t_bitacora_envios')
-          .insert(nuevaBitacora.toJson());
+          .insert(nuevaBitacora.toJsonForInsert());
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

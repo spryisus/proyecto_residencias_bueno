@@ -124,3 +124,4 @@ USING (true);
 -- 3. Estas políticas funcionan tanto en escritorio como en móvil.
 -- ============================================
 
+
