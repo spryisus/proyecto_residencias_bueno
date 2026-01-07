@@ -1,3 +1,5 @@
+import 'estado_envio.dart';
+
 class BitacoraEnvio {
   final int? idBitacora;
   final String consecutivo;
@@ -13,6 +15,7 @@ class BitacoraEnvio {
   final String? anexos;
   final String? observaciones;
   final String? cobo;
+  final EstadoEnvio estado;
   final DateTime creadoEn;
   final DateTime actualizadoEn;
   final String? creadoPor;
@@ -33,6 +36,7 @@ class BitacoraEnvio {
     this.anexos,
     this.observaciones,
     this.cobo,
+    this.estado = EstadoEnvio.recibido,
     required this.creadoEn,
     required this.actualizadoEn,
     this.creadoPor,
@@ -54,6 +58,7 @@ class BitacoraEnvio {
     String? anexos,
     String? observaciones,
     String? cobo,
+    EstadoEnvio? estado,
     DateTime? creadoEn,
     DateTime? actualizadoEn,
     String? creadoPor,
@@ -74,6 +79,7 @@ class BitacoraEnvio {
       anexos: anexos ?? this.anexos,
       observaciones: observaciones ?? this.observaciones,
       cobo: cobo ?? this.cobo,
+      estado: estado ?? this.estado,
       creadoEn: creadoEn ?? this.creadoEn,
       actualizadoEn: actualizadoEn ?? this.actualizadoEn,
       creadoPor: creadoPor ?? this.creadoPor,
@@ -97,6 +103,7 @@ class BitacoraEnvio {
       'anexos': anexos,
       'observaciones': observaciones,
       'cobo': cobo,
+      'estado': estado.toDbString(),
       'creado_en': creadoEn.toIso8601String(),
       'actualizado_en': actualizadoEn.toIso8601String(),
       'creado_por': creadoPor,
@@ -121,6 +128,7 @@ class BitacoraEnvio {
       'anexos': anexos,
       'observaciones': observaciones,
       'cobo': cobo,
+      'estado': estado.toDbString(),
       'creado_en': creadoEn.toIso8601String(),
       'actualizado_en': actualizadoEn.toIso8601String(),
       'creado_por': creadoPor,
@@ -149,6 +157,7 @@ class BitacoraEnvio {
       anexos: json['anexos'] as String?,
       observaciones: json['observaciones'] as String?,
       cobo: json['cobo'] as String?,
+      estado: EstadoEnvio.fromDbString(json['estado'] as String?),
       creadoEn: _parseDateTime(json['creado_en']),
       actualizadoEn: _parseDateTime(json['actualizado_en']),
       creadoPor: json['creado_por'] as String?,

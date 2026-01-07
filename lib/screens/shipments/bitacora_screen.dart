@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import '../../app/config/supabase_client.dart' show supabaseClient;
 import '../../domain/entities/bitacora_envio.dart';
+import '../../domain/entities/estado_envio.dart';
 import '../../data/services/bitacora_export_service.dart';
 
 // Clase auxiliar para campos
@@ -325,12 +326,329 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
     }
   }
 
-  // Método helper para obtener años disponibles (2017 hasta año actual + 1)
+  // Método helper para obtener años disponibles
+  // Incluye años desde 2017 hasta el año actual + 1, y también años que existen en la BD
   List<int> _getAvailableYears() {
     final currentYear = DateTime.now().year;
     final startYear = 2017;
     final endYear = currentYear + 1; // Incluir el año siguiente
-    return List.generate(endYear - startYear + 1, (index) => startYear + index);
+    
+    // Obtener años que existen en las bitácoras
+    final yearsInDb = _bitacoras.map((b) => b.fecha.year).toSet();
+    
+    // Crear lista con años base (2017 hasta año actual + 1)
+    final baseYears = List.generate(endYear - startYear + 1, (index) => startYear + index);
+    
+    // Agregar años de la BD que no estén en el rango base
+    final allYears = <int>{...baseYears, ...yearsInDb};
+    
+    // Ordenar y retornar
+    final sortedYears = allYears.toList()..sort();
+    return sortedYears;
+  }
+
+  // Obtener años que tienen bitácoras registradas
+  List<int> _getYearsWithRecords() {
+    final years = _bitacoras.map((b) => b.fecha.year).toSet().toList();
+    years.sort();
+    return years;
+  }
+
+  Future<void> _showAddBitacoraWithYearDialog() async {
+    final availableYears = _getAvailableYears();
+
+    final result = await showDialog<int>(
+      context: context,
+      builder: (context) {
+        int? selectedYear;
+        return StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            title: const Text('Nueva Bitácora con Año'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Selecciona el año para la nueva bitácora:',
+                  style: TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<int>(
+                  decoration: const InputDecoration(
+                    labelText: 'Año',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.calendar_today),
+                  ),
+                  items: availableYears.map((year) {
+                    return DropdownMenuItem<int>(
+                      value: year,
+                      child: Text(year.toString()),
+                    );
+                  }).toList(),
+                  onChanged: (int? year) {
+                    setState(() {
+                      selectedYear = year;
+                    });
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: selectedYear == null
+                    ? null
+                    : () => Navigator.pop(context, selectedYear),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF003366),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Continuar'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (result != null) {
+      // Crear una fecha con el año seleccionado (usar 1 de enero como fecha por defecto)
+      final fechaInicial = DateTime(result, 1, 1);
+      await _showAddBitacoraDialog(fechaInicial: fechaInicial);
+    }
+  }
+
+  Future<void> _showDeleteYearDialog() async {
+    final yearsWithRecords = _getYearsWithRecords();
+    
+    if (yearsWithRecords.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay bitácoras registradas para eliminar'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final result = await showDialog<int>(
+      context: context,
+      builder: (context) {
+        int? selectedYear;
+        return StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            title: const Text('Eliminar Bitácoras por Año'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Selecciona el año cuyas bitácoras deseas eliminar:',
+                  style: TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<int>(
+                  decoration: const InputDecoration(
+                    labelText: 'Año',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.calendar_today),
+                  ),
+                  items: yearsWithRecords.map((year) {
+                    final count = _bitacoras.where((b) => b.fecha.year == year).length;
+                    return DropdownMenuItem<int>(
+                      value: year,
+                      child: Text('$year (${count} registro${count != 1 ? 's' : ''})'),
+                    );
+                  }).toList(),
+                  onChanged: (int? year) {
+                    setState(() {
+                      selectedYear = year;
+                    });
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: selectedYear == null
+                    ? null
+                    : () => Navigator.pop(context, selectedYear),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Continuar'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (result != null) {
+      await _confirmDeleteYear(result);
+    }
+  }
+
+  Future<void> _confirmDeleteYear(int year) async {
+    final count = _bitacoras.where((b) => b.fecha.year == year).length;
+    
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('⚠️ Confirmar Eliminación'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '¿Estás realmente seguro de eliminar la bitácora del año $year?',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Se eliminarán $count registro${count != 1 ? 's' : ''} del año $year.',
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red[300]!),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.warning, color: Colors.red, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Esta acción no se puede deshacer.',
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _deleteBitacorasByYear(year);
+    }
+  }
+
+  Future<void> _deleteBitacorasByYear(int year) async {
+    try {
+      // Obtener IDs de las bitácoras del año
+      final bitacorasDelAnio = _bitacoras.where((b) => b.fecha.year == year).toList();
+      
+      if (bitacorasDelAnio.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No hay bitácoras del año $year para eliminar'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      // Mostrar indicador de carga
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+      }
+
+      // Eliminar cada bitácora
+      int eliminadas = 0;
+      for (final bitacora in bitacorasDelAnio) {
+        if (bitacora.idBitacora != null) {
+          try {
+            await supabaseClient
+                .from('t_bitacora_envios')
+                .delete()
+                .eq('id_bitacora', bitacora.idBitacora!);
+            eliminadas++;
+          } catch (e) {
+            debugPrint('Error al eliminar bitácora ${bitacora.idBitacora}: $e');
+          }
+        }
+      }
+
+      // Cerrar diálogo de carga
+      if (mounted) {
+        Navigator.pop(context);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Se eliminaron $eliminadas bitácora${eliminadas != 1 ? 's' : ''} del año $year'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        
+        // Recargar bitácoras
+        await _loadBitacoras();
+        
+        // Si el año eliminado estaba seleccionado, limpiar la selección
+        if (_selectedYear == year) {
+          setState(() {
+            _selectedYear = null;
+          });
+          _applyFilters();
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error al eliminar bitácoras del año $year: $e');
+      
+      // Cerrar diálogo de carga si está abierto
+      if (mounted) {
+        Navigator.pop(context);
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al eliminar bitácoras: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _showExportDialog() async {
@@ -561,10 +879,11 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
     }
   }
 
-  Future<void> _showAddBitacoraDialog() async {
+  Future<void> _showAddBitacoraDialog({DateTime? fechaInicial}) async {
     await showDialog(
       context: context,
       builder: (context) => _BitacoraFormDialog(
+        fechaInicial: fechaInicial,
         onSave: (bitacora) async {
           await _saveBitacora(bitacora);
         },
@@ -624,8 +943,15 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
         }
       }
 
+      // Para registros de 2026 en adelante, estado inicial es ENVIADO
+      // Para registros anteriores, mantener FINALIZADO (por defecto)
+      final estadoInicial = anioBitacora >= 2026 
+          ? EstadoEnvio.enviado 
+          : EstadoEnvio.recibido;
+
       final nuevaBitacora = bitacora.copyWith(
         consecutivo: nuevoConsecutivo,
+        estado: estadoInicial,
         creadoEn: DateTime.now(),
         actualizadoEn: DateTime.now(),
         creadoPor: nombreUsuario,
@@ -846,6 +1172,32 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _showAddBitacoraWithYearDialog,
+                      icon: const Icon(Icons.calendar_today, size: 18),
+                      label: const Text('Nueva con Año'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue[700],
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _showDeleteYearDialog,
+                      icon: const Icon(Icons.delete_forever, size: 18),
+                      label: const Text('Eliminar Año'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red[700],
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -1048,6 +1400,34 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed: _showAddBitacoraWithYearDialog,
+                    icon: const Icon(Icons.calendar_today),
+                    label: const Text('Nueva con Año'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue[700],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed: _showDeleteYearDialog,
+                    icon: const Icon(Icons.delete_forever),
+                    label: const Text('Eliminar Año'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red[700],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -1209,6 +1589,9 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
                               ),
                             ],
                           ),
+                          const SizedBox(height: 8),
+                          // Tercera fila: Estado
+                          _buildEstadoChip(bitacora.estado),
                         ],
                       );
                     } else {
@@ -1296,6 +1679,9 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
                 ),
                 const SizedBox(height: 12),
                 const Divider(height: 1),
+                const SizedBox(height: 12),
+                // Leyenda del estado en cursiva y gris
+                _buildEstadoLeyenda(bitacora.estado),
                 const SizedBox(height: 12),
                 // Grid de campos principales (siempre usar narrow en móvil)
                 _buildNarrowGrid(bitacora),
@@ -1754,6 +2140,19 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
               _buildDetailRow('Anexos', bitacora.anexos),
               _buildDetailRow('Observaciones', bitacora.observaciones),
               _buildDetailRow('COBO', bitacora.cobo),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const SizedBox(
+                    width: 100,
+                    child: Text(
+                      'Estado:',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  _buildEstadoChip(bitacora.estado),
+                ],
+              ),
             ],
           ),
         ),
@@ -1771,6 +2170,82 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildEstadoChip(EstadoEnvio estado) {
+    Color color;
+    IconData icon;
+
+    switch (estado) {
+      case EstadoEnvio.enviado:
+        color = Colors.blue;
+        icon = Icons.send;
+        break;
+      case EstadoEnvio.enTransito:
+        color = Colors.amber; // Amarillo
+        icon = Icons.local_shipping;
+        break;
+      case EstadoEnvio.recibido:
+        color = Colors.green;
+        icon = Icons.check_circle;
+        break;
+    }
+
+    return Chip(
+      avatar: Icon(icon, size: 16, color: color),
+      label: Text(
+        estado.nombre,
+        style: TextStyle(
+          fontSize: 11,
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      backgroundColor: color.withOpacity(0.1),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
+  /// Widget para mostrar el estado en texto cursiva y gris
+  Widget _buildEstadoLeyenda(EstadoEnvio estado) {
+    Color color;
+
+    switch (estado) {
+      case EstadoEnvio.enviado:
+        color = Colors.blue;
+        break;
+      case EstadoEnvio.enTransito:
+        color = Colors.amber; // Amarillo
+        break;
+      case EstadoEnvio.recibido:
+        color = Colors.green;
+        break;
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          'Estado: ${estado.nombre}',
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[600],
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      ],
     );
   }
 
@@ -1840,10 +2315,12 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
 
 class _BitacoraFormDialog extends StatefulWidget {
   final BitacoraEnvio? bitacora;
+  final DateTime? fechaInicial;
   final Function(BitacoraEnvio) onSave;
 
   const _BitacoraFormDialog({
     this.bitacora,
+    this.fechaInicial,
     required this.onSave,
   });
 
@@ -1854,6 +2331,7 @@ class _BitacoraFormDialog extends StatefulWidget {
 class _BitacoraFormDialogState extends State<_BitacoraFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late DateTime _fecha;
+  EstadoEnvio _estado = EstadoEnvio.recibido;
   final _tecnicoController = TextEditingController();
   final _tarjetaController = TextEditingController();
   final _codigoController = TextEditingController();
@@ -1872,6 +2350,7 @@ class _BitacoraFormDialogState extends State<_BitacoraFormDialog> {
     if (widget.bitacora != null) {
       final b = widget.bitacora!;
       _fecha = b.fecha;
+      _estado = b.estado;
       _tecnicoController.text = b.tecnico ?? '';
       _tarjetaController.text = b.tarjeta ?? '';
       _codigoController.text = b.codigo ?? '';
@@ -1884,7 +2363,10 @@ class _BitacoraFormDialogState extends State<_BitacoraFormDialog> {
       _observacionesController.text = b.observaciones ?? '';
       _coboController.text = b.cobo ?? '';
     } else {
-      _fecha = DateTime.now();
+      // Si hay fecha inicial proporcionada, usarla; si no, usar fecha actual
+      _fecha = widget.fechaInicial ?? DateTime.now();
+      // Para nuevos registros de 2026 en adelante, estado inicial es ENVIADO
+      _estado = _fecha.year >= 2026 ? EstadoEnvio.enviado : EstadoEnvio.recibido;
     }
   }
 
@@ -1935,6 +2417,7 @@ class _BitacoraFormDialogState extends State<_BitacoraFormDialog> {
         anexos: _anexosController.text.trim().isEmpty ? null : _anexosController.text.trim(),
         observaciones: _observacionesController.text.trim().isEmpty ? null : _observacionesController.text.trim(),
         cobo: _coboController.text.trim().isEmpty ? null : _coboController.text.trim(),
+        estado: _estado,
         creadoEn: widget.bitacora?.creadoEn ?? DateTime.now(),
         actualizadoEn: DateTime.now(),
         creadoPor: widget.bitacora?.creadoPor,
@@ -2117,6 +2600,65 @@ class _BitacoraFormDialogState extends State<_BitacoraFormDialog> {
                   ),
                   border: const OutlineInputBorder(),
                 ),
+              ),
+              const SizedBox(height: 12),
+              // Estado
+              DropdownButtonFormField<EstadoEnvio>(
+                value: _estado,
+                decoration: InputDecoration(
+                  labelText: 'Estado',
+                  hintText: 'Seleccione el estado del envío',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: Icon(
+                    _estado == EstadoEnvio.enviado
+                        ? Icons.send
+                        : _estado == EstadoEnvio.enTransito
+                            ? Icons.local_shipping
+                            : Icons.check_circle,
+                    color: _estado == EstadoEnvio.enviado
+                        ? Colors.blue
+                        : _estado == EstadoEnvio.enTransito
+                            ? Colors.amber
+                            : Colors.green,
+                  ),
+                ),
+                items: EstadoEnvio.values.map((estado) {
+                  Color color;
+                  IconData icon;
+
+                  switch (estado) {
+                    case EstadoEnvio.enviado:
+                      color = Colors.blue;
+                      icon = Icons.send;
+                      break;
+                    case EstadoEnvio.enTransito:
+                      color = Colors.amber;
+                      icon = Icons.local_shipping;
+                      break;
+                    case EstadoEnvio.recibido:
+                      color = Colors.green;
+                      icon = Icons.check_circle;
+                      break;
+                  }
+
+                  return DropdownMenuItem<EstadoEnvio>(
+                    value: estado,
+                    child: Row(
+                      children: [
+                        Icon(icon, size: 20, color: color),
+                        const SizedBox(width: 12),
+                        Text(estado.nombre),
+                      ],
+                    ),
+                  );
+                }).toList(),
+                onChanged: (EstadoEnvio? nuevoEstado) {
+                  if (nuevoEstado != null) {
+                    setState(() {
+                      _estado = nuevoEstado;
+                    });
+                  }
+                },
               ),
             ],
           ),

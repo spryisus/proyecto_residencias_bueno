@@ -10,10 +10,12 @@ import '../../domain/repositories/inventario_repository.dart';
 import '../../app/config/supabase_client.dart' show supabaseClient;
 import '../inventory/inventory_type_selection_screen.dart';
 import '../inventory/category_inventory_screen.dart';
+import '../inventory/completed_inventories_screen.dart';
 import '../inventory/jumper_categories_screen.dart' show JumperCategories, JumperCategory, JumperCategoriesScreen;
 import '../computo/inventario_computo_screen.dart';
 import '../sicor/inventario_tarjetas_red_screen.dart';
 import '../shipments/shipments_screen.dart';
+import '../shipments/active_shipments_screen.dart';
 import '../admin/admin_dashboard.dart';
 import '../settings/settings_screen.dart';
 import '../sdr/solicitud_sdr_screen.dart';
@@ -479,15 +481,24 @@ class _WelcomePageState extends State<WelcomePage> {
       final totalInventarios = userSessions.length;
       final pendingInventarios = userSessions.where((s) => s.status == InventorySessionStatus.pending).length;
 
-      // Contar envíos activos (bitácoras recientes)
+      // Contar envíos activos (solo ENVIADO y EN_TRANSITO, agrupados por código)
       try {
         final bitacoras = await supabaseClient
             .from('t_bitacora_envios')
-            .select('id_bitacora')
-            .limit(1000);
-        _activeShipments = bitacoras.length;
+            .select('codigo, estado')
+            .inFilter('estado', ['ENVIADO', 'EN_TRANSITO']);
+        
+        // Agrupar por código para contar envíos únicos activos
+        final codigosActivos = <String>{};
+        for (final bitacora in bitacoras) {
+          final codigo = bitacora['codigo'] as String?;
+          if (codigo != null && codigo.isNotEmpty) {
+            codigosActivos.add(codigo);
+          }
+        }
+        _activeShipments = codigosActivos.length;
       } catch (e) {
-        debugPrint('Error al contar envíos: $e');
+        debugPrint('Error al contar envíos activos: $e');
         _activeShipments = 0;
       }
 
@@ -758,7 +769,7 @@ class _WelcomePageState extends State<WelcomePage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Text(
-                    'Telmex Inventarios',
+                    'Gestor de Refacciones y Envios',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -778,11 +789,6 @@ class _WelcomePageState extends State<WelcomePage> {
           ),
           const Spacer(),
           // Iconos de acción
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () {},
-            tooltip: 'Notificaciones',
-          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             onPressed: () async {
@@ -1092,34 +1098,19 @@ class _WelcomePageState extends State<WelcomePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Bienvenido, ${_userName ?? 'Usuario'} 👋',
+                    'Bienvenido 👋',
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Panel de usuario - Sistema de Larga Distancia',
+                    'Panel de administración - Sistema de Larga Distancia',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Colors.grey[600],
                     ),
                   ),
                 ],
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const InventoryTypeSelectionScreen()),
-                  );
-                },
-                icon: const Icon(Icons.add),
-                label: const Text('Nueva Acción'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF003366),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                ),
               ),
             ],
           ),
@@ -1158,9 +1149,6 @@ class _WelcomePageState extends State<WelcomePage> {
               }
             },
           ),
-          const SizedBox(height: 32),
-          // Actividad Reciente
-          _buildRecentActivity(context),
         ],
       ),
     );
@@ -1187,20 +1175,32 @@ class _WelcomePageState extends State<WelcomePage> {
             _buildStatCard(
               context,
               icon: Icons.inventory_2,
-              title: 'Total Inventarios',
+              title: 'Inventarios',
               value: _totalInventarios.toString(),
               badge: '+12%',
               badgeColor: Colors.green,
               iconColor: Colors.blue,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const InventoryTypeSelectionScreen()),
+                );
+              },
             ),
             _buildStatCard(
               context,
               icon: Icons.pending_outlined,
-              title: 'Pendientes',
+              title: 'Inventarios pendientes',
               value: _pendingInventarios.toString(),
               badge: _pendingInventarios > 0 ? _pendingInventarios.toString() : null,
               badgeColor: Colors.orange,
               iconColor: Colors.orange,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CompletedInventoriesScreen()),
+                );
+              },
             ),
             _buildStatCard(
               context,
@@ -1210,6 +1210,12 @@ class _WelcomePageState extends State<WelcomePage> {
               badge: _activeShipments > 0 ? _activeShipments.toString() : null,
               badgeColor: Colors.orange,
               iconColor: Colors.green,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ActiveShipmentsScreen()),
+                );
+              },
             ),
           ],
         );
@@ -1225,26 +1231,30 @@ class _WelcomePageState extends State<WelcomePage> {
     String? badge,
     required Color badgeColor,
     required Color iconColor,
+    VoidCallback? onTap,
   }) {
     return Card(
       elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: iconColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: iconColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(icon, color: iconColor, size: 48),
                   ),
-                  child: Icon(icon, color: iconColor, size: 24),
-                ),
                 if (badge != null)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1278,6 +1288,7 @@ class _WelcomePageState extends State<WelcomePage> {
               ),
             ),
           ],
+        ),
         ),
       ),
     );
@@ -1366,118 +1377,4 @@ class _WelcomePageState extends State<WelcomePage> {
     return months[month - 1];
   }
 
-  Widget _buildRecentActivity(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Actividad Reciente',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            TextButton(
-              onPressed: () {},
-              child: const Text('Ver todo'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Card(
-          elevation: 2,
-          child: ListView(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            children: [
-              _buildActivityItem(
-                context,
-                icon: Icons.inventory_2,
-                title: 'Nuevo inventario registrado',
-                subtitle: 'Categoría: Equipos de red',
-                time: 'Hace 15 minutos',
-                iconColor: Colors.blue,
-              ),
-              const Divider(height: 1),
-              _buildActivityItem(
-                context,
-                icon: Icons.local_shipping,
-                title: 'Envío completado',
-                subtitle: 'Destino: Sucursal Centro',
-                time: 'Hace 2 horas',
-                iconColor: Colors.green,
-                status: 'Completado',
-                statusColor: Colors.green,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildActivityItem(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required String time,
-    required Color iconColor,
-    String? status,
-    Color? statusColor,
-  }) {
-    return ListTile(
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: iconColor.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(icon, color: iconColor, size: 20),
-      ),
-      title: Text(
-        title,
-        style: const TextStyle(fontWeight: FontWeight.w600),
-      ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 4),
-          Text(subtitle),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Text(
-                time,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
-              ),
-              if (status != null) ...[
-                const SizedBox(width: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: statusColor?.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    status,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 }

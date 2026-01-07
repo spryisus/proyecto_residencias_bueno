@@ -4,6 +4,7 @@ import 'dart:io';
 import '../../widgets/animated_card.dart';
 import '../settings/settings_screen.dart';
 import 'bitacora_screen.dart';
+import 'active_shipments_screen.dart';
 import 'tresguerras_tracking_screen.dart';
 
 class ShipmentsScreen extends StatelessWidget {
@@ -59,8 +60,8 @@ class ShipmentsScreen extends StatelessWidget {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final isMobile = constraints.maxWidth < 600;
-                  final crossAxisCount = isMobile ? 1 : 2;
-                  final maxWidth = isMobile ? constraints.maxWidth : 600.0;
+                  final crossAxisCount = isMobile ? 1 : 3;
+                  final maxWidth = isMobile ? constraints.maxWidth : 900.0;
                   
                   return Center(
                     child: SizedBox(
@@ -86,6 +87,14 @@ class ShipmentsScreen extends StatelessWidget {
                             subtitle: 'Registra y consulta bitácoras de envíos',
                             color: Colors.green,
                             onTap: () => _navigateToBitacora(context),
+                          ),
+                          _buildEnvioOptionCard(
+                            context,
+                            icon: Icons.inventory_2,
+                            title: 'Envíos Activos',
+                            subtitle: 'Gestiona envíos en curso',
+                            color: Colors.orange,
+                            onTap: () => _navigateToActiveShipments(context),
                           ),
                         ],
                       ),
@@ -165,6 +174,15 @@ class ShipmentsScreen extends StatelessWidget {
       context,
       MaterialPageRoute(
         builder: (_) => const BitacoraScreen(),
+      ),
+    );
+  }
+
+  void _navigateToActiveShipments(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ActiveShipmentsScreen(),
       ),
     );
   }
