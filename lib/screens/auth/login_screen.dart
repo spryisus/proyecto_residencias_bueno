@@ -20,6 +20,10 @@ import '../admin/admin_dashboard.dart';
 import '../settings/settings_screen.dart';
 import '../sdr/solicitud_sdr_screen.dart';
 import '../../widgets/calendar_widget.dart';
+import '../../widgets/rutinas_widget.dart';
+import '../../widgets/rutina_notifications_widget.dart';
+import '../../domain/entities/rutina.dart';
+import '../../data/local/rutina_storage.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -417,6 +421,8 @@ class _WelcomePageState extends State<WelcomePage> {
   int _pendingInventarios = 0;
   int _activeShipments = 0;
   bool _isLoadingStats = true;
+  final RutinaStorage _rutinaStorage = RutinaStorage();
+  List<Rutina> _rutinas = [];
 
   @override
   void initState() {
@@ -424,6 +430,16 @@ class _WelcomePageState extends State<WelcomePage> {
     _loadUserInfo();
     _loadSessions();
     _loadStats();
+    _loadRutinas();
+  }
+
+  Future<void> _loadRutinas() async {
+    final rutinas = await _rutinaStorage.getAllRutinas();
+    if (mounted) {
+      setState(() {
+        _rutinas = rutinas;
+      });
+    }
   }
 
   Future<void> _loadUserInfo() async {
@@ -709,23 +725,29 @@ class _WelcomePageState extends State<WelcomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Row(
+      body: Stack(
         children: [
-          // Sidebar permanente
-          _buildSidebar(context),
-          // Contenido principal
-          Expanded(
-            child: Column(
-              children: [
-                // Header superior
-                _buildHeader(context),
-                // Contenido scrollable
-                Expanded(
-                  child: _buildMainContent(context),
+          Row(
+            children: [
+              // Sidebar permanente
+              _buildSidebar(context),
+              // Contenido principal
+              Expanded(
+                child: Column(
+                  children: [
+                    // Header superior
+                    _buildHeader(context),
+                    // Contenido scrollable
+                    Expanded(
+                      child: _buildMainContent(context),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+          // Widget de notificaciones de rutinas (parte inferior derecha)
+          const RutinaNotificationsWidget(),
         ],
       ),
     );
@@ -1129,12 +1151,27 @@ class _WelcomePageState extends State<WelcomePage> {
                   children: [
                     Expanded(
                       flex: 1,
-                      child: _buildEnhancedClockWidget(),
+                      child: Column(
+                        children: [
+                          _buildEnhancedClockWidget(),
+                          const SizedBox(height: 16),
+                          RutinasWidget(
+                            onRutinasChanged: (rutinas) {
+                              setState(() {
+                                _rutinas = rutinas;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
                       flex: 2,
-                      child: const CalendarWidget(),
+                      child: CalendarWidget(
+                        rutinas: _rutinas,
+                        enableBlinkAnimation: true,
+                      ),
                     ),
                   ],
                 );
@@ -1143,7 +1180,18 @@ class _WelcomePageState extends State<WelcomePage> {
                   children: [
                     _buildEnhancedClockWidget(),
                     const SizedBox(height: 16),
-                    const CalendarWidget(),
+                    RutinasWidget(
+                      onRutinasChanged: (rutinas) {
+                        setState(() {
+                          _rutinas = rutinas;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    CalendarWidget(
+                      rutinas: _rutinas,
+                      enableBlinkAnimation: true,
+                    ),
                   ],
                 );
               }
@@ -1180,11 +1228,16 @@ class _WelcomePageState extends State<WelcomePage> {
               badge: '+12%',
               badgeColor: Colors.green,
               iconColor: Colors.blue,
-              onTap: () {
-                Navigator.push(
+              onTap: () async {
+                await Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const InventoryTypeSelectionScreen()),
                 );
+                // Refrescar estadísticas al regresar
+                if (mounted) {
+                  _loadStats();
+                  _loadSessions();
+                }
               },
             ),
             _buildStatCard(
@@ -1195,11 +1248,16 @@ class _WelcomePageState extends State<WelcomePage> {
               badge: _pendingInventarios > 0 ? _pendingInventarios.toString() : null,
               badgeColor: Colors.orange,
               iconColor: Colors.orange,
-              onTap: () {
-                Navigator.push(
+              onTap: () async {
+                await Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const CompletedInventoriesScreen()),
                 );
+                // Refrescar estadísticas al regresar
+                if (mounted) {
+                  _loadStats();
+                  _loadSessions();
+                }
               },
             ),
             _buildStatCard(
@@ -1210,11 +1268,15 @@ class _WelcomePageState extends State<WelcomePage> {
               badge: _activeShipments > 0 ? _activeShipments.toString() : null,
               badgeColor: Colors.orange,
               iconColor: Colors.green,
-              onTap: () {
-                Navigator.push(
+              onTap: () async {
+                await Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const ActiveShipmentsScreen()),
                 );
+                // Refrescar estadísticas al regresar
+                if (mounted) {
+                  _loadStats();
+                }
               },
             ),
           ],
@@ -1243,12 +1305,13 @@ class _WelcomePageState extends State<WelcomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisSize: MainAxisSize.max,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: iconColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
@@ -1273,12 +1336,14 @@ class _WelcomePageState extends State<WelcomePage> {
                   ),
               ],
             ),
-            const SizedBox(height: 16),
+            const Spacer(),
             Text(
               value,
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
             const SizedBox(height: 4),
             Text(
@@ -1286,6 +1351,8 @@ class _WelcomePageState extends State<WelcomePage> {
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Colors.grey[600],
               ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           ],
         ),

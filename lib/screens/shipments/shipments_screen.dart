@@ -169,22 +169,24 @@ class ShipmentsScreen extends StatelessWidget {
     );
   }
 
-  void _navigateToBitacora(BuildContext context) {
-    Navigator.push(
+  void _navigateToBitacora(BuildContext context) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => const BitacoraScreen(),
       ),
     );
+    // Los cambios se reflejarán automáticamente cuando se regrese al dashboard
   }
 
-  void _navigateToActiveShipments(BuildContext context) {
-    Navigator.push(
+  void _navigateToActiveShipments(BuildContext context) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => const ActiveShipmentsScreen(),
       ),
     );
+    // Los cambios se reflejarán automáticamente cuando se regrese al dashboard
   }
 }
 

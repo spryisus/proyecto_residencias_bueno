@@ -28,6 +28,11 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
   int? _selectedYear; // null = todos los años
   Set<String> _selectedCodigos = {}; // Códigos seleccionados para filtrar
   final ScrollController _codigosScrollController = ScrollController();
+  
+  // Nuevos filtros
+  String? _selectedTarjeta; // Filtro por tarjeta (RECTIFICADOR, MIS, OAU, etc.)
+  final TextEditingController _codigoSearchController = TextEditingController(); // Búsqueda por últimos 4 dígitos
+  bool _isSearching = false; // Indica si se está buscando activamente
 
   @override
   void initState() {
@@ -40,6 +45,7 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
   @override
   void dispose() {
     _codigosScrollController.dispose();
+    _codigoSearchController.dispose();
     super.dispose();
   }
 
@@ -231,13 +237,42 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
       }).toList();
     }
 
-    // Filtrar por códigos seleccionados
-    if (_selectedCodigos.isNotEmpty) {
+    // Filtrar por tarjeta seleccionada
+    if (_selectedTarjeta != null && _selectedTarjeta!.isNotEmpty) {
+      filtered = filtered.where((bitacora) {
+        return bitacora.tarjeta != null && 
+               bitacora.tarjeta!.trim().toUpperCase() == _selectedTarjeta!.trim().toUpperCase();
+      }).toList();
+    }
+
+    // Filtrar por códigos seleccionados (solo si no hay búsqueda activa)
+    if (!_isSearching && _selectedCodigos.isNotEmpty) {
       filtered = filtered.where((bitacora) {
         return bitacora.codigo != null && 
                bitacora.codigo!.isNotEmpty &&
                _selectedCodigos.contains(bitacora.codigo);
       }).toList();
+    }
+
+    // Búsqueda por últimos 3 o 4 dígitos del código (solo si hay búsqueda activa)
+    if (_isSearching) {
+      final searchText = _codigoSearchController.text.trim();
+      final searchLength = searchText.length;
+      if (searchLength >= 3 && searchLength <= 4) {
+        final searchDigits = searchText.toUpperCase();
+        filtered = filtered.where((bitacora) {
+          if (bitacora.codigo == null || bitacora.codigo!.isEmpty) {
+            return false;
+          }
+          final codigo = bitacora.codigo!.toUpperCase();
+          // Verificar si los últimos 3 o 4 caracteres coinciden
+          if (codigo.length >= searchLength) {
+            final ultimosDigitos = codigo.substring(codigo.length - searchLength);
+            return ultimosDigitos == searchDigits;
+          }
+          return false;
+        }).toList();
+      }
     }
 
     setState(() {
@@ -255,7 +290,15 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
       }).toList();
     }
     
-    // Obtener códigos únicos de las bitácoras filtradas por año
+    // Si hay filtro de tarjeta, aplicar también
+    if (_selectedTarjeta != null && _selectedTarjeta!.isNotEmpty) {
+      bitacorasFiltradas = bitacorasFiltradas.where((b) {
+        return b.tarjeta != null && 
+               b.tarjeta!.trim().toUpperCase() == _selectedTarjeta!.trim().toUpperCase();
+      }).toList();
+    }
+    
+    // Obtener códigos únicos de las bitácoras filtradas
     final codigos = bitacorasFiltradas
         .where((b) => b.codigo != null && b.codigo!.isNotEmpty)
         .map((b) => b.codigo!)
@@ -263,6 +306,63 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
         .toList();
     codigos.sort();
     return codigos;
+  }
+
+  /// Obtiene las tarjetas únicas disponibles para el filtro
+  List<String> _getTarjetasDisponibles() {
+    // Filtrar bitácoras por el año seleccionado primero
+    List<BitacoraEnvio> bitacorasFiltradas = _bitacoras;
+    
+    if (_selectedYear != null) {
+      bitacorasFiltradas = bitacorasFiltradas.where((b) {
+        return b.fecha.year == _selectedYear;
+      }).toList();
+    }
+    
+    // Obtener tarjetas únicas (no nulas y no vacías)
+    final tarjetas = bitacorasFiltradas
+        .where((b) => b.tarjeta != null && b.tarjeta!.trim().isNotEmpty)
+        .map((b) => b.tarjeta!.trim().toUpperCase())
+        .toSet()
+        .toList();
+    tarjetas.sort();
+    return tarjetas;
+  }
+
+  /// Limpia el filtro de tarjeta
+  void _clearTarjetaFilter() {
+    setState(() {
+      _selectedTarjeta = null;
+      _applyFilters();
+    });
+  }
+
+  /// Realiza la búsqueda por últimos 3 o 4 dígitos
+  void _performSearch() {
+    final searchText = _codigoSearchController.text.trim();
+    if (searchText.length >= 3 && searchText.length <= 4) {
+      setState(() {
+        _isSearching = true;
+        _applyFilters();
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor ingresa 3 o 4 caracteres (números o letras)'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// Limpia la búsqueda
+  void _clearSearch() {
+    setState(() {
+      _codigoSearchController.clear();
+      _isSearching = false;
+      _applyFilters();
+    });
   }
 
   void _toggleCodigo(String codigo) {
@@ -291,6 +391,126 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
       _selectedCodigos.clear();
       _applyFilters();
     });
+  }
+
+  /// Muestra diálogo para seleccionar año
+  Future<void> _showYearFilterDialog() async {
+    final availableYears = _getAvailableYears();
+    
+    final selectedYear = await showDialog<int?>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Filtrar por año'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: availableYears.length + 1, // +1 para "Todos"
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                final isSelected = _selectedYear == null;
+                return ListTile(
+                  leading: Icon(
+                    isSelected ? Icons.check_circle : Icons.circle_outlined,
+                    color: isSelected ? const Color(0xFF003366) : Colors.grey,
+                  ),
+                  title: const Text('Todos'),
+                  selected: isSelected,
+                  onTap: () => Navigator.pop(context, null),
+                );
+              } else {
+                final year = availableYears[index - 1];
+                final isSelected = _selectedYear == year;
+                return ListTile(
+                  leading: Icon(
+                    isSelected ? Icons.check_circle : Icons.circle_outlined,
+                    color: isSelected ? const Color(0xFF003366) : Colors.grey,
+                  ),
+                  title: Text(year.toString()),
+                  selected: isSelected,
+                  onTap: () => Navigator.pop(context, year),
+                );
+              }
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+        ],
+      ),
+    );
+
+    if (selectedYear != null || (_selectedYear != null && selectedYear == null)) {
+      _selectYear(selectedYear);
+    }
+  }
+
+  /// Muestra diálogo para seleccionar tarjeta
+  Future<void> _showTarjetaFilterDialog() async {
+    final tarjetasDisponibles = _getTarjetasDisponibles();
+    
+    final selectedTarjeta = await showDialog<String?>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Filtrar por tarjeta'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: tarjetasDisponibles.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Text('No hay tarjetas disponibles'),
+                  ),
+                )
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: tarjetasDisponibles.length + 1, // +1 para "Todas"
+                  itemBuilder: (context, index) {
+                    if (index == 0) {
+                      final isSelected = _selectedTarjeta == null;
+                      return ListTile(
+                        leading: Icon(
+                          isSelected ? Icons.check_circle : Icons.circle_outlined,
+                          color: isSelected ? Colors.orange[400] : Colors.grey,
+                        ),
+                        title: const Text('Todas'),
+                        selected: isSelected,
+                        onTap: () => Navigator.pop(context, null),
+                      );
+                    } else {
+                      final tarjeta = tarjetasDisponibles[index - 1];
+                      final isSelected = _selectedTarjeta == tarjeta;
+                      return ListTile(
+                        leading: Icon(
+                          isSelected ? Icons.check_circle : Icons.circle_outlined,
+                          color: isSelected ? Colors.orange[400] : Colors.grey,
+                        ),
+                        title: Text(tarjeta),
+                        selected: isSelected,
+                        onTap: () => Navigator.pop(context, tarjeta),
+                      );
+                    }
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+        ],
+      ),
+    );
+
+    if (selectedTarjeta != null || (_selectedTarjeta != null && selectedTarjeta == null)) {
+      setState(() {
+        _selectedTarjeta = selectedTarjeta;
+        _applyFilters();
+      });
+    }
   }
 
   /// Compara dos consecutivos para ordenamiento ascendente
@@ -1016,25 +1236,109 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
   Widget _buildMobileLayout() {
     return Column(
       children: [
-        // Selector de años
+        // Header con filtros por año y tarjeta (similar a la imagen de referencia)
         Container(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
           decoration: BoxDecoration(
-            color: Colors.grey[100],
+            color: const Color(0xFF003366),
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
+                color: Colors.grey.withOpacity(0.2),
                 spreadRadius: 1,
-                blurRadius: 2,
-                offset: const Offset(0, 1),
+                blurRadius: 3,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Filtros en fila horizontal - Botones que abren diálogos
+              Row(
+                children: [
+                  // Filtro por año - Botón
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Filtrar por año:',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey[300],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        SizedBox(
+                          height: 36,
+                          child: OutlinedButton.icon(
+                            onPressed: _showYearFilterDialog,
+                            icon: const Icon(Icons.calendar_today, size: 16, color: Colors.white),
+                            label: Text(
+                              _selectedYear == null ? 'Todos' : _selectedYear.toString(),
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: Colors.white.withOpacity(0.15),
+                              side: BorderSide(color: Colors.white.withOpacity(0.5)),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  // Filtro por tarjeta - Botón
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Filtrar por tarjeta:',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey[300],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        SizedBox(
+                          height: 36,
+                          child: OutlinedButton.icon(
+                            onPressed: _showTarjetaFilterDialog,
+                            icon: const Icon(Icons.filter_list, size: 16, color: Colors.white),
+                            label: Text(
+                              _selectedTarjeta == null ? 'Todas' : _selectedTarjeta!,
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: Colors.white.withOpacity(0.15),
+                              side: BorderSide(color: Colors.white.withOpacity(0.5)),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        // Filtros y búsqueda - MÓVIL: Todo en columna
+        Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 8),
+              // Búsqueda por últimos 3 o 4 dígitos del código
               Text(
-                'Filtrar por año:',
+                'Buscar por últimos 3 o 4 dígitos del código:',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -1042,108 +1346,120 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      // Botón "Todos"
-                      _buildYearChip(null, 'Todos'),
-                      const SizedBox(width: 8),
-                      // Años dinámicos (2017 hasta año actual + 1)
-                      ..._getAvailableYears().map((year) {
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: _buildYearChip(year, year.toString()),
-                        );
-                      }),
-                    ],
-                  ),
-              ),
-            ],
-          ),
-        ),
-        // Filtros por código - MÓVIL: Todo en columna
-        Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Título y botón limpiar en fila
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Filtrar por código:',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey[700],
+                  Expanded(
+                    child: TextField(
+                      controller: _codigoSearchController,
+                      maxLength: 4,
+                      decoration: InputDecoration(
+                        hintText: 'Ej: 8CA9 o CA9',
+                        border: const OutlineInputBorder(),
+                        counterText: '',
+                        suffixIcon: _isSearching
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: _clearSearch,
+                                tooltip: 'Limpiar búsqueda',
+                              )
+                            : null,
+                      ),
+                      textCapitalization: TextCapitalization.characters,
+                      onSubmitted: (_) => _performSearch(),
                     ),
                   ),
-                  if (_selectedCodigos.isNotEmpty)
-                    TextButton.icon(
-                      onPressed: _clearCodigoFilters,
-                      icon: const Icon(Icons.clear, size: 16),
-                      label: const Text('Limpiar'),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                      ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.search),
+                    onPressed: _performSearch,
+                    tooltip: 'Buscar',
+                    style: IconButton.styleFrom(
+                      backgroundColor: const Color(0xFF003366),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.all(16),
                     ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 8),
-              // Chips de códigos
-              SizedBox(
-                height: 50,
-                child: Scrollbar(
-                  controller: _codigosScrollController,
-                  thumbVisibility: true,
-                  thickness: 8,
-                  radius: const Radius.circular(4),
-                  child: SingleChildScrollView(
+              const SizedBox(height: 16),
+              // Título y botón limpiar en fila (filtros de código - solo si no hay búsqueda activa)
+              if (!_isSearching) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Filtrar por código:',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    if (_selectedCodigos.isNotEmpty)
+                      TextButton.icon(
+                        onPressed: _clearCodigoFilters,
+                        icon: const Icon(Icons.clear, size: 16),
+                        label: const Text('Limpiar'),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // Chips de códigos
+                SizedBox(
+                  height: 50,
+                  child: Scrollbar(
                     controller: _codigosScrollController,
-                    scrollDirection: Axis.horizontal,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    child: Row(
-                      children: _getCodigosDisponibles().map((codigo) {
-                        final isSelected = _selectedCodigos.contains(codigo);
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: FilterChip(
-                            label: Text(codigo),
-                            selected: isSelected,
-                            onSelected: (_) => _toggleCodigo(codigo),
-                            selectedColor: Colors.blue[300],
-                            checkmarkColor: Colors.white,
-                            labelStyle: TextStyle(
-                              color: isSelected ? Colors.white : Colors.grey[700],
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                              fontSize: 12,
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              side: BorderSide(
-                                color: isSelected 
-                                    ? Colors.blue[700]! 
-                                    : Colors.grey[300]!,
-                                width: isSelected ? 2 : 1,
+                    thumbVisibility: true,
+                    thickness: 8,
+                    radius: const Radius.circular(4),
+                    child: SingleChildScrollView(
+                      controller: _codigosScrollController,
+                      scrollDirection: Axis.horizontal,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: Row(
+                        children: _getCodigosDisponibles().map((codigo) {
+                          final isSelected = _selectedCodigos.contains(codigo);
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: FilterChip(
+                              label: Text(codigo),
+                              selected: isSelected,
+                              onSelected: (_) => _toggleCodigo(codigo),
+                              selectedColor: Colors.blue[300],
+                              checkmarkColor: Colors.white,
+                              labelStyle: TextStyle(
+                                color: isSelected ? Colors.white : Colors.grey[700],
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                fontSize: 12,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                side: BorderSide(
+                                  color: isSelected 
+                                      ? Colors.blue[700]! 
+                                      : Colors.grey[300]!,
+                                  width: isSelected ? 2 : 1,
+                                ),
                               ),
                             ),
-                          ),
-                        );
-                      }).toList(),
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
+                const SizedBox(height: 12),
+              ],
               // Botones en columna para móvil
               Row(
                 children: [
@@ -1241,61 +1557,164 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
   Widget _buildDesktopLayout() {
     return Column(
       children: [
-        // Selector de años
+        // Header con filtros por año y tarjeta (similar a la imagen de referencia)
         Container(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
           decoration: BoxDecoration(
-            color: Colors.grey[100],
+            color: const Color(0xFF003366),
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
+                color: Colors.grey.withOpacity(0.2),
                 spreadRadius: 1,
-                blurRadius: 2,
-                offset: const Offset(0, 1),
+                blurRadius: 3,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Filtrar por año:',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[700],
-                ),
-              ),
-              const SizedBox(height: 8),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      // Botón "Todos"
-                      _buildYearChip(null, 'Todos'),
-                      const SizedBox(width: 8),
-                      // Años dinámicos (2017 hasta año actual + 1)
-                      ..._getAvailableYears().map((year) {
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: _buildYearChip(year, year.toString()),
-                        );
-                      }),
-                    ],
+              // Filtros en fila horizontal - Botones que abren diálogos
+              Row(
+                children: [
+                  // Filtro por año - Botón
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Filtrar por año:',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey[300],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        SizedBox(
+                          height: 36,
+                          child: OutlinedButton.icon(
+                            onPressed: _showYearFilterDialog,
+                            icon: const Icon(Icons.calendar_today, size: 16, color: Colors.white),
+                            label: Text(
+                              _selectedYear == null ? 'Todos' : _selectedYear.toString(),
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: Colors.white.withOpacity(0.15),
+                              side: BorderSide(color: Colors.white.withOpacity(0.5)),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: 16),
+                  // Filtro por tarjeta - Botón
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Filtrar por tarjeta:',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey[300],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        SizedBox(
+                          height: 36,
+                          child: OutlinedButton.icon(
+                            onPressed: _showTarjetaFilterDialog,
+                            icon: const Icon(Icons.filter_list, size: 16, color: Colors.white),
+                            label: Text(
+                              _selectedTarjeta == null ? 'Todas' : _selectedTarjeta!,
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: Colors.white.withOpacity(0.15),
+                              side: BorderSide(color: Colors.white.withOpacity(0.5)),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
-        // Filtros por código y botón agregar - ESCRITORIO
+        // Filtros y búsqueda - ESCRITORIO
         Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const SizedBox(height: 8),
+              // Búsqueda por últimos 4 dígitos del código
               Row(
                 children: [
                   Expanded(
+                    flex: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Buscar por últimos 3 o 4 dígitos del código:',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _codigoSearchController,
+                                maxLength: 4,
+                                decoration: InputDecoration(
+                                  hintText: 'Ej: 8CA9 o CA9',
+                                  border: const OutlineInputBorder(),
+                                  counterText: '',
+                                  suffixIcon: _isSearching
+                                      ? IconButton(
+                                          icon: const Icon(Icons.clear),
+                                          onPressed: _clearSearch,
+                                          tooltip: 'Limpiar búsqueda',
+                                        )
+                                      : null,
+                                ),
+                                textCapitalization: TextCapitalization.characters,
+                                onSubmitted: (_) => _performSearch(),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(Icons.search),
+                              onPressed: _performSearch,
+                              tooltip: 'Buscar',
+                              style: IconButton.styleFrom(
+                                backgroundColor: const Color(0xFF003366),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.all(16),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 1,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1307,7 +1726,7 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
                             color: Colors.grey[700],
                           ),
                         ),
-                        if (_selectedCodigos.isNotEmpty) ...[
+                        if (_selectedCodigos.isNotEmpty && !_isSearching) ...[
                           const SizedBox(height: 4),
                           TextButton.icon(
                             onPressed: _clearCodigoFilters,
@@ -1321,57 +1740,88 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
                             ),
                           ),
                         ],
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          height: 50,
-                          child: Scrollbar(
-                            controller: _codigosScrollController,
-                            thumbVisibility: true,
-                            thickness: 8,
-                            radius: const Radius.circular(4),
-                            child: SingleChildScrollView(
+                        if (!_isSearching) ...[
+                          SizedBox(
+                            height: 50,
+                            child: Scrollbar(
                               controller: _codigosScrollController,
-                              scrollDirection: Axis.horizontal,
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              child: Row(
-                                children: _getCodigosDisponibles().map((codigo) {
-                                  final isSelected = _selectedCodigos.contains(codigo);
-                                  return Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: FilterChip(
-                                      label: Text(codigo),
-                                      selected: isSelected,
-                                      onSelected: (_) => _toggleCodigo(codigo),
-                                      selectedColor: Colors.blue[300],
-                                      checkmarkColor: Colors.white,
-                                      labelStyle: TextStyle(
-                                        color: isSelected ? Colors.white : Colors.grey[700],
-                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                        fontSize: 12,
-                                      ),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 6,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(16),
-                                        side: BorderSide(
-                                          color: isSelected 
-                                              ? Colors.blue[700]! 
-                                              : Colors.grey[300]!,
-                                          width: isSelected ? 2 : 1,
+                              thumbVisibility: true,
+                              thickness: 8,
+                              radius: const Radius.circular(4),
+                              child: SingleChildScrollView(
+                                controller: _codigosScrollController,
+                                scrollDirection: Axis.horizontal,
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                child: Row(
+                                  children: _getCodigosDisponibles().map((codigo) {
+                                    final isSelected = _selectedCodigos.contains(codigo);
+                                    return Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: FilterChip(
+                                        label: Text(codigo),
+                                        selected: isSelected,
+                                        onSelected: (_) => _toggleCodigo(codigo),
+                                        selectedColor: Colors.blue[300],
+                                        checkmarkColor: Colors.white,
+                                        labelStyle: TextStyle(
+                                          color: isSelected ? Colors.white : Colors.grey[700],
+                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                          fontSize: 12,
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(16),
+                                          side: BorderSide(
+                                            color: isSelected 
+                                                ? Colors.blue[700]! 
+                                                : Colors.grey[300]!,
+                                            width: isSelected ? 2 : 1,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  );
-                                }).toList(),
+                                    );
+                                  }).toList(),
+                                ),
                               ),
                             ),
                           ),
-                        ),
+                        ] else ...[
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.orange[50],
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.orange[200]!),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.info_outline, size: 16, color: Colors.orange[700]),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Búsqueda activa. Los filtros de código están deshabilitados.',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.orange[900],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Botones de acción
+              Row(
+                children: [
                   const SizedBox(width: 12),
                   ElevatedButton.icon(
                     onPressed: _showExportDialog,
@@ -1506,183 +1956,46 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
               width: 1,
             ),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
+          child: ExpansionTile(
+            initiallyExpanded: false,
+            tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            title: _buildCardHeader(bitacora),
+            subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Encabezado con consecutivo y fecha (adaptado para móvil)
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final isMobile = constraints.maxWidth < 600;
-                    
-                    if (isMobile) {
-                      // Header móvil: Todo en columna
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Primera fila: Consecutivo y botones
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF003366),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    'CONS. ${bitacora.consecutivo}',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              IconButton(
-                                icon: const Icon(Icons.edit, size: 20),
-                                color: Colors.blue,
-                                onPressed: () => _showEditBitacoraDialog(bitacora),
-                                tooltip: 'Editar',
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete, size: 20),
-                                color: Colors.red,
-                                onPressed: () => _showDeleteConfirmation(bitacora),
-                                tooltip: 'Eliminar',
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          // Segunda fila: Fecha
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.calendar_today,
-                                size: 16,
-                                color: Colors.grey[600],
-                              ),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  _formatDate(bitacora.fecha),
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.grey[700],
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          // Tercera fila: Estado
-                          _buildEstadoChip(bitacora.estado),
-                        ],
-                      );
-                    } else {
-                      // Header escritorio: Todo en una fila
-                      return Row(
-                        children: [
-                          // Consecutivo con tamaño flexible
-                          Flexible(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF003366),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                'CONS. ${bitacora.consecutivo}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          // Fecha con tamaño flexible
-                          Flexible(
-                            flex: 2,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.calendar_today,
-                                  size: 16,
-                                  color: Colors.grey[600],
-                                ),
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  child: Text(
-                                    _formatDate(bitacora.fecha),
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                      color: Colors.grey[700],
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          // Botones de acción (siempre visibles)
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.edit, size: 20),
-                                color: Colors.blue,
-                                onPressed: () => _showEditBitacoraDialog(bitacora),
-                                tooltip: 'Editar',
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                              const SizedBox(width: 4),
-                              IconButton(
-                                icon: const Icon(Icons.delete, size: 20),
-                                color: Colors.red,
-                                onPressed: () => _showDeleteConfirmation(bitacora),
-                                tooltip: 'Eliminar',
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                            ],
-                          ),
-                        ],
-                      );
-                    }
-                  },
-                ),
-                const SizedBox(height: 12),
-                const Divider(height: 1),
-                const SizedBox(height: 12),
-                // Leyenda del estado en cursiva y gris
+                const SizedBox(height: 4),
+                _buildEstadoChip(bitacora.estado),
+                const SizedBox(height: 4),
                 _buildEstadoLeyenda(bitacora.estado),
-                const SizedBox(height: 12),
+              ],
+            ),
+            children: [
+              const Divider(height: 1),
+              const SizedBox(height: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Botones de acción
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit, size: 20),
+                        color: Colors.blue,
+                        onPressed: () => _showEditBitacoraDialog(bitacora),
+                        tooltip: 'Editar',
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: const Icon(Icons.delete, size: 20),
+                        color: Colors.red,
+                        onPressed: () => _showDeleteConfirmation(bitacora),
+                        tooltip: 'Eliminar',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                 // Grid de campos principales (siempre usar narrow en móvil)
                 _buildNarrowGrid(bitacora),
                 // Anexos (si existe)
@@ -1760,11 +2073,53 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
                     ],
                   ),
                 ],
-              ],
-            ),
+                ],
+              ),
+            ],
           ),
         );
       },
+    );
+  }
+
+  /// Construye el encabezado de la tarjeta (consecutivo y fecha)
+  Widget _buildCardHeader(BitacoraEnvio bitacora) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF003366),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            'CONS. ${bitacora.consecutivo}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Icon(
+          Icons.calendar_today,
+          size: 16,
+          color: Colors.grey[600],
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            _formatDate(bitacora.fecha),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey[700],
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 
@@ -2280,18 +2635,53 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
       label: Text(label),
       selected: isSelected,
       onSelected: (_) => _selectYear(year),
-      selectedColor: const Color(0xFF003366),
-      checkmarkColor: Colors.white,
+      selectedColor: Colors.white,
+      checkmarkColor: const Color(0xFF003366),
+      backgroundColor: Colors.white.withOpacity(0.15),
       labelStyle: TextStyle(
-        color: isSelected ? Colors.white : Colors.grey[700],
+        color: isSelected ? const Color(0xFF003366) : Colors.white,
         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        fontSize: 11,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         side: BorderSide(
-          color: isSelected ? const Color(0xFF003366) : Colors.grey[300]!,
-          width: isSelected ? 2 : 1,
+          color: isSelected ? Colors.white : Colors.white.withOpacity(0.4),
+          width: isSelected ? 1.5 : 1,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTarjetaChip(String? tarjeta, String label) {
+    final isSelected = _selectedTarjeta == tarjeta;
+    return FilterChip(
+      label: Text(
+        label,
+        style: const TextStyle(fontSize: 11),
+      ),
+      selected: isSelected,
+      onSelected: (_) {
+        setState(() {
+          _selectedTarjeta = isSelected ? null : tarjeta;
+          _applyFilters();
+        });
+      },
+      selectedColor: Colors.orange[400],
+      checkmarkColor: Colors.white,
+      backgroundColor: Colors.white.withOpacity(0.15),
+      labelStyle: TextStyle(
+        color: Colors.white,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        fontSize: 10,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: isSelected ? Colors.orange[400]! : Colors.white.withOpacity(0.4),
+          width: isSelected ? 1.5 : 1,
         ),
       ),
     );

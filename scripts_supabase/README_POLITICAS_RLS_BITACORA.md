@@ -68,3 +68,5 @@ Deberías ver 8 filas (4 comandos × 2 roles).
 Si prefieres usar solo políticas para usuarios autenticados (más seguro), puedes usar el script `t_bitacora_envios.sql` que crea políticas solo para `authenticated`. Sin embargo, esto requiere que todos los usuarios se autentiquen en Supabase Auth.
 
 
+
+
