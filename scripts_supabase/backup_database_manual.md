@@ -246,3 +246,4 @@ crontab -e
 - Usa formato `custom` en lugar de `plain` (más rápido)
 - Comprime el backup después con `gzip`
 
+

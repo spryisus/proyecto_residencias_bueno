@@ -165,3 +165,4 @@ cd scripts_supabase
 - **Backups comprimidos:** Usa `gzip` para ahorrar espacio
 - **Verificar backups:** Prueba restaurar un backup de prueba ocasionalmente
 
+

@@ -423,6 +423,7 @@ class _WelcomePageState extends State<WelcomePage> {
   bool _isLoadingStats = true;
   final RutinaStorage _rutinaStorage = RutinaStorage();
   List<Rutina> _rutinas = [];
+  Rutina? _rutinaEnAnimacion; // Rutina actualmente en animación en el calendario
 
   @override
   void initState() {
@@ -724,38 +725,69 @@ class _WelcomePageState extends State<WelcomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          Row(
-            children: [
-              // Sidebar permanente
-              _buildSidebar(context),
-              // Contenido principal
-              Expanded(
-                child: Column(
-                  children: [
-                    // Header superior
-                    _buildHeader(context),
-                    // Contenido scrollable
-                    Expanded(
-                      child: _buildMainContent(context),
-                    ),
-                  ],
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    
+    if (isMobile) {
+      // Versión móvil con Drawer
+      return Scaffold(
+        drawer: _buildDrawer(context),
+        body: Stack(
+          children: [
+            Column(
+              children: [
+                // Header superior
+                _buildHeader(context),
+                // Contenido scrollable
+                Expanded(
+                  child: _buildMainContent(context),
                 ),
-              ),
-            ],
-          ),
-          // Widget de notificaciones de rutinas (parte inferior derecha)
-          const RutinaNotificationsWidget(),
-        ],
-      ),
-    );
+              ],
+            ),
+            // Widget de notificaciones de rutinas (parte inferior derecha)
+            RutinaNotificationsWidget(
+              rutinaEnAnimacion: _rutinaEnAnimacion,
+            ),
+          ],
+        ),
+      );
+    } else {
+      // Versión escritorio con sidebar permanente
+      return Scaffold(
+        body: Stack(
+          children: [
+            Row(
+              children: [
+                // Sidebar permanente
+                _buildSidebar(context),
+                // Contenido principal
+                Expanded(
+                  child: Column(
+                    children: [
+                      // Header superior
+                      _buildHeader(context),
+                      // Contenido scrollable
+                      Expanded(
+                        child: _buildMainContent(context),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            // Widget de notificaciones de rutinas (parte inferior derecha)
+            RutinaNotificationsWidget(
+              rutinaEnAnimacion: _rutinaEnAnimacion,
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Widget _buildHeader(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
     return Container(
-      height: 70,
+      height: isMobile ? 70 : 70,
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
@@ -766,50 +798,66 @@ class _WelcomePageState extends State<WelcomePage> {
           ),
         ],
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      padding: EdgeInsets.only(
+        top: isMobile ? MediaQuery.of(context).padding.top + 8 : 12,
+        bottom: 12,
+        left: isMobile ? 12 : 24,
+        right: isMobile ? 12 : 24,
+      ),
       child: Row(
         children: [
           // Logo y título
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF003366),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.inventory_2,
-                  color: Colors.white,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text(
-                    'Gestor de Refacciones y Envios',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF003366),
-                    ),
+          Expanded(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: MediaQuery.of(context).size.width < 600 ? 32 : 40,
+                  height: MediaQuery.of(context).size.width < 600 ? 32 : 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF003366),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  Text(
-                    'Sistema de Larga Distancia',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
+                  child: Icon(
+                    Icons.inventory_2,
+                    color: Colors.white,
+                    size: MediaQuery.of(context).size.width < 600 ? 20 : 24,
                   ),
-                ],
-              ),
-            ],
+                ),
+                SizedBox(width: MediaQuery.of(context).size.width < 600 ? 8 : 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Gestor de Refacciones y Envios',
+                        style: TextStyle(
+                          fontSize: MediaQuery.of(context).size.width < 600 ? 14 : 18,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF003366),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (MediaQuery.of(context).size.width >= 600)
+                        Text(
+                          'Sistema de Larga Distancia',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-          const Spacer(),
+          if (MediaQuery.of(context).size.width >= 600) const Spacer(),
           // Iconos de acción
           IconButton(
             icon: const Icon(Icons.settings_outlined),
@@ -826,44 +874,230 @@ class _WelcomePageState extends State<WelcomePage> {
               }
             },
             tooltip: 'Configuración',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: MediaQuery.of(context).size.width < 600 ? 8 : 12),
           // Avatar y usuario
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: const Color(0xFF003366),
-                child: Text(
-                  _userName?.substring(0, 1).toUpperCase() ?? 'U',
+          if (MediaQuery.of(context).size.width >= 600)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: const Color(0xFF003366),
+                  child: Text(
+                    _userName?.substring(0, 1).toUpperCase() ?? 'U',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _userName ?? 'Usuario',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        _userRole ?? 'Usuario',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            )
+          else
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: const Color(0xFF003366),
+              child: Text(
+                _userName?.substring(0, 1).toUpperCase() ?? 'U',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDrawer(BuildContext context) {
+    return Drawer(
+      width: 280,
+      child: Column(
+        children: [
+          // Header del Drawer
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
+            decoration: BoxDecoration(
+              color: const Color(0xFF003366),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CircleAvatar(
+                  radius: 30,
+                  backgroundColor: Colors.white,
+                  child: Text(
+                    _userName?.substring(0, 1).toUpperCase() ?? 'U',
+                    style: const TextStyle(
+                      color: Color(0xFF003366),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 24,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _userName ?? 'Usuario',
                   style: const TextStyle(
                     color: Colors.white,
+                    fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    _userName ?? 'Usuario',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
+                Text(
+                  _userRole ?? 'Usuario',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.8),
+                    fontSize: 14,
                   ),
-                  Text(
-                    _userRole ?? 'Usuario',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                // Sección PRINCIPAL
+                _buildDrawerSection(
+                  context,
+                  'PRINCIPAL',
+                  [
+                    _buildDrawerItem(
+                      context,
+                      icon: Icons.home_outlined,
+                      title: 'Dashboard',
+                      isSelected: _selectedIndex == 0,
+                      onTap: () {
+                        Navigator.pop(context);
+                        setState(() => _selectedIndex = 0);
+                      },
                     ),
+                    _buildDrawerItem(
+                      context,
+                      icon: Icons.inventory_2_outlined,
+                      title: 'Inventarios',
+                      badge: _pendingInventarios > 0 ? _pendingInventarios.toString() : null,
+                      badgeColor: Colors.orange,
+                      onTap: () async {
+                        Navigator.pop(context);
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const InventoryTypeSelectionScreen()),
+                        );
+                        if (mounted) {
+                          _loadSessions();
+                          _loadStats();
+                        }
+                      },
+                    ),
+                    _buildDrawerItem(
+                      context,
+                      icon: Icons.local_shipping_outlined,
+                      title: 'Envíos',
+                      badge: _activeShipments > 0 ? _activeShipments.toString() : null,
+                      badgeColor: Colors.orange,
+                      onTap: () async {
+                        Navigator.pop(context);
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const ShipmentsScreen()),
+                        );
+                        if (mounted) {
+                          _loadSessions();
+                          _loadStats();
+                        }
+                      },
+                    ),
+                    _buildDrawerItem(
+                      context,
+                      icon: Icons.description_outlined,
+                      title: 'Solicitudes SDR',
+                      onTap: () async {
+                        Navigator.pop(context);
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const SolicitudSdrScreen()),
+                        );
+                        if (mounted) {
+                          _loadSessions();
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                // Sección SESIONES GUARDADAS
+                if (_sessions.isNotEmpty)
+                  _buildDrawerSection(
+                    context,
+                    'SESIONES GUARDADAS',
+                    _sessions.take(2).map((session) {
+                      final isPending = session.status == InventorySessionStatus.pending;
+                      return _buildDrawerItem(
+                        context,
+                        icon: isPending ? Icons.pause_circle_outline : Icons.check_circle_outline,
+                        title: session.categoryName,
+                        subtitle: _formatTimeAgo(session.updatedAt),
+                        iconColor: isPending ? Colors.orange : Colors.green,
+                        onTap: () {
+                          Navigator.pop(context);
+                          _openSession(session);
+                        },
+                      );
+                    }).toList(),
                   ),
-                ],
-              ),
-            ],
+              ],
+            ),
+          ),
+          // Cerrar Sesión
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: _buildDrawerItem(
+              context,
+              icon: Icons.logout,
+              title: 'Cerrar Sesión',
+              iconColor: Colors.red,
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -1000,6 +1234,91 @@ class _WelcomePageState extends State<WelcomePage> {
     } else {
       return 'Actualizado ahora';
     }
+  }
+
+  Widget _buildDrawerSection(BuildContext context, String title, List<Widget> items) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[600],
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        ...items,
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  Widget _buildDrawerItem(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    String? badge,
+    Color? badgeColor,
+    Color? iconColor,
+    bool isSelected = false,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      leading: Icon(
+        icon,
+        size: 24,
+        color: isSelected
+            ? const Color(0xFF003366)
+            : iconColor ?? Colors.grey[700],
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+          color: isSelected ? const Color(0xFF003366) : Colors.grey[800],
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: subtitle != null
+          ? Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey[600],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            )
+          : null,
+      trailing: badge != null
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: badgeColor ?? Colors.orange,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                badge,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            )
+          : null,
+      selected: isSelected,
+      selectedTileColor: const Color(0xFF003366).withOpacity(0.1),
+      onTap: onTap,
+    );
   }
 
   Widget _buildSidebarSection(BuildContext context, String title, List<Widget> items) {
@@ -1169,8 +1488,14 @@ class _WelcomePageState extends State<WelcomePage> {
                     Expanded(
                       flex: 2,
                       child: CalendarWidget(
+                        key: const ValueKey('calendar_wide'),
                         rutinas: _rutinas,
                         enableBlinkAnimation: true,
+                        onRutinaAnimacionChanged: (rutina) {
+                          setState(() {
+                            _rutinaEnAnimacion = rutina;
+                          });
+                        },
                       ),
                     ),
                   ],
@@ -1189,8 +1514,14 @@ class _WelcomePageState extends State<WelcomePage> {
                     ),
                     const SizedBox(height: 16),
                     CalendarWidget(
+                      key: const ValueKey('calendar_narrow'),
                       rutinas: _rutinas,
                       enableBlinkAnimation: true,
+                      onRutinaAnimacionChanged: (rutina) {
+                        setState(() {
+                          _rutinaEnAnimacion = rutina;
+                        });
+                      },
                     ),
                   ],
                 );
@@ -1210,15 +1541,16 @@ class _WelcomePageState extends State<WelcomePage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isMobile = constraints.maxWidth < 600;
-        final crossAxisCount = isMobile ? 1 : 3; // Solo 3 tarjetas para usuarios normales
+        final crossAxisCount = isMobile ? 2 : 3; // Solo 3 tarjetas para usuarios normales
         
         return GridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           crossAxisCount: crossAxisCount,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-          childAspectRatio: isMobile ? 2.5 : 1.2,
+          crossAxisSpacing: isMobile ? 8 : 16,
+          mainAxisSpacing: isMobile ? 8 : 16,
+          childAspectRatio: isMobile ? 0.95 : 1.2,
+          padding: EdgeInsets.all(isMobile ? 8 : 16),
           children: [
             _buildStatCard(
               context,
@@ -1295,67 +1627,74 @@ class _WelcomePageState extends State<WelcomePage> {
     required Color iconColor,
     VoidCallback? onTap,
   }) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    
     return Card(
       elevation: 2,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: EdgeInsets.all(isMobile ? 10 : 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            mainAxisSize: MainAxisSize.max,
+            mainAxisAlignment: MainAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(14),
+                    padding: EdgeInsets.all(isMobile ? 6 : 14),
                     decoration: BoxDecoration(
                       color: iconColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(icon, color: iconColor, size: 48),
+                    child: Icon(icon, color: iconColor, size: isMobile ? 24 : 48),
                   ),
-                if (badge != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: badgeColor,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      badge,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
+                  if (badge != null)
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isMobile ? 5 : 8,
+                        vertical: isMobile ? 2 : 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: badgeColor,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        badge,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: isMobile ? 8 : 11,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
-              ],
-            ),
-            const Spacer(),
-            Text(
-              value,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.bold,
+                ],
               ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[600],
+              SizedBox(height: isMobile ? 6 : 12),
+              Text(
+                value,
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  fontSize: isMobile ? 18 : null,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
-          ],
-        ),
+              SizedBox(height: isMobile ? 2 : 4),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.grey[600],
+                  fontSize: isMobile ? 10 : null,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
+              ),
+            ],
+          ),
         ),
       ),
     );

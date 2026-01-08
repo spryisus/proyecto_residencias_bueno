@@ -10,6 +10,7 @@ class CalendarWidget extends StatefulWidget {
   final DateTime? focusedDay;
   final List<Rutina>? rutinas;
   final bool enableBlinkAnimation;
+  final Function(Rutina?)? onRutinaAnimacionChanged; // Callback para notificar rutina en animación
 
   const CalendarWidget({
     super.key,
@@ -18,6 +19,7 @@ class CalendarWidget extends StatefulWidget {
     this.focusedDay,
     this.rutinas,
     this.enableBlinkAnimation = false,
+    this.onRutinaAnimacionChanged,
   });
 
   @override
@@ -30,6 +32,9 @@ class _CalendarWidgetState extends State<CalendarWidget>
   late DateTime _selectedDay;
   CalendarFormat _calendarFormat = CalendarFormat.month;
   late AnimationController _blinkController;
+  int _currentRutinaIndex = 0;
+  List<Rutina> _rutinasOrdenadas = [];
+  bool _animacionIniciada = false; // Flag para evitar reiniciar la animación
 
   @override
   void initState() {
@@ -43,12 +48,113 @@ class _CalendarWidgetState extends State<CalendarWidget>
     );
     
     if (widget.enableBlinkAnimation) {
+      _ordenarRutinasPorProximidad();
       // Esperar 10 segundos antes de iniciar la animación
       Future.delayed(const Duration(seconds: 10), () {
-        if (mounted) {
-          _blinkController.repeat(reverse: true);
+        if (mounted && _rutinasOrdenadas.isNotEmpty && !_animacionIniciada) {
+          _iniciarAnimacionSecuencial();
         }
       });
+    }
+  }
+
+  /// Ordena las rutinas por proximidad (más próxima primero)
+  void _ordenarRutinasPorProximidad() {
+    if (widget.rutinas == null) return;
+    
+    final ahora = DateTime.now();
+    _rutinasOrdenadas = widget.rutinas!
+        .where((r) => r.fechaEstimada != null)
+        .toList()
+      ..sort((a, b) {
+        final diasA = a.fechaEstimada!.difference(ahora).inDays;
+        final diasB = b.fechaEstimada!.difference(ahora).inDays;
+        // Ordenar por días restantes (ascendente: más próxima primero)
+        return diasA.compareTo(diasB);
+      });
+  }
+
+  /// Inicia la animación secuencial de rutinas
+  void _iniciarAnimacionSecuencial() {
+    if (_rutinasOrdenadas.isEmpty) return;
+    if (_animacionIniciada) {
+      // Si la animación ya está en progreso, no reiniciar
+      return;
+    }
+    
+    // Marcar que la animación ha comenzado
+    _animacionIniciada = true;
+    _currentRutinaIndex = 0;
+    _animarRutinaActual();
+  }
+
+  /// Anima la rutina actual por 5 segundos
+  void _animarRutinaActual() {
+    if (!mounted || _currentRutinaIndex >= _rutinasOrdenadas.length) {
+      // Notificar que no hay más rutinas en animación
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          widget.onRutinaAnimacionChanged?.call(null);
+        }
+      });
+      return;
+    }
+    
+    final rutinaActual = _rutinasOrdenadas[_currentRutinaIndex];
+    
+    // Notificar que esta rutina está en animación (usar addPostFrameCallback para evitar setState durante build)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        widget.onRutinaAnimacionChanged?.call(rutinaActual);
+        // Forzar rebuild para actualizar qué rutina está en animación
+        setState(() {});
+      }
+    });
+    
+    // Iniciar animación de parpadeo
+    _blinkController.repeat(reverse: true);
+    
+    // Detener después de 5 segundos y pasar a la siguiente
+    Future.delayed(const Duration(seconds: 5), () {
+      if (!mounted) return;
+      
+      _blinkController.stop();
+      _blinkController.reset();
+      
+      // Notificar que esta rutina terminó su animación
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          widget.onRutinaAnimacionChanged?.call(null);
+          
+          // Pasar a la siguiente rutina
+          _currentRutinaIndex++;
+          
+          // Si hay más rutinas, continuar con la siguiente
+          if (_currentRutinaIndex < _rutinasOrdenadas.length) {
+            _animarRutinaActual();
+          } else {
+            // No hay más rutinas, mantener null
+            widget.onRutinaAnimacionChanged?.call(null);
+          }
+        }
+      });
+    });
+  }
+
+  @override
+  void didUpdateWidget(CalendarWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Solo actualizar el orden de rutinas si cambian, pero NO reiniciar la animación
+    // La animación solo debe ejecutarse una vez al inicio
+    if (widget.rutinas != oldWidget.rutinas && _animacionIniciada) {
+      // Si la animación ya está en progreso, NO reordenar para evitar desincronización
+      // Solo actualizar si la animación aún no ha comenzado
+      return;
+    }
+    
+    if (widget.rutinas != oldWidget.rutinas && !_animacionIniciada) {
+      // Solo reordenar si la animación no ha comenzado
+      _ordenarRutinasPorProximidad();
     }
   }
 
@@ -71,59 +177,6 @@ class _CalendarWidgetState extends State<CalendarWidget>
     return null;
   }
 
-  /// Verifica si una fecha debe parpadear (desde hoy hasta la fecha de la rutina)
-  bool _shouldBlink(DateTime date) {
-    if (!widget.enableBlinkAnimation) return false;
-    if (widget.rutinas == null) return false;
-    
-    final ahora = DateTime.now();
-    final hoy = DateTime(ahora.year, ahora.month, ahora.day);
-    final fecha = DateTime(date.year, date.month, date.day);
-    
-    // Verificar si esta fecha está entre hoy y alguna fecha de rutina
-    for (var rutina in widget.rutinas!) {
-      if (rutina.fechaEstimada != null) {
-        final fechaRutina = DateTime(
-          rutina.fechaEstimada!.year,
-          rutina.fechaEstimada!.month,
-          rutina.fechaEstimada!.day,
-        );
-        
-        // Si la fecha está entre hoy y la fecha de la rutina (inclusive)
-        if (fecha.isAfter(hoy.subtract(const Duration(days: 1))) &&
-            (fecha.isBefore(fechaRutina.add(const Duration(days: 1))) ||
-             isSameDay(fecha, fechaRutina))) {
-          return true;
-        }
-      }
-    }
-    
-    return false;
-  }
-
-  /// Obtiene todas las rutinas que afectan una fecha (para parpadeo)
-  List<Rutina> _getRutinasForDateRange(DateTime date) {
-    if (widget.rutinas == null) return [];
-    
-    final ahora = DateTime.now();
-    final hoy = DateTime(ahora.year, ahora.month, ahora.day);
-    final fecha = DateTime(date.year, date.month, date.day);
-    
-    return widget.rutinas!.where((rutina) {
-      if (rutina.fechaEstimada == null) return false;
-      
-      final fechaRutina = DateTime(
-        rutina.fechaEstimada!.year,
-        rutina.fechaEstimada!.month,
-        rutina.fechaEstimada!.day,
-      );
-      
-      // Si la fecha está entre hoy y la fecha de la rutina (inclusive)
-      return fecha.isAfter(hoy.subtract(const Duration(days: 1))) &&
-             (fecha.isBefore(fechaRutina.add(const Duration(days: 1))) ||
-              isSameDay(fecha, fechaRutina));
-    }).toList();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -243,20 +296,52 @@ class _CalendarWidgetState extends State<CalendarWidget>
               calendarBuilders: CalendarBuilders(
                 defaultBuilder: (context, date, focusedDay) {
                   final rutina = _getRutinaForDate(date);
-                  final rutinasEnRango = _getRutinasForDateRange(date);
+                  final ahora = DateTime.now();
+                  final hoy = DateTime(ahora.year, ahora.month, ahora.day);
+                  final fecha = DateTime(date.year, date.month, date.day);
+                  
+                  // Verificar si esta fecha debe parpadear (recorrido desde hoy hasta fecha de rutina)
+                  bool shouldBlink = false;
+                  Rutina? rutinaEnAnimacion;
+                  
+                  if (widget.enableBlinkAnimation &&
+                      _rutinasOrdenadas.isNotEmpty &&
+                      _currentRutinaIndex < _rutinasOrdenadas.length) {
+                    rutinaEnAnimacion = _rutinasOrdenadas[_currentRutinaIndex];
+                    
+                    if (rutinaEnAnimacion.fechaEstimada != null) {
+                      final fechaRutina = DateTime(
+                        rutinaEnAnimacion.fechaEstimada!.year,
+                        rutinaEnAnimacion.fechaEstimada!.month,
+                        rutinaEnAnimacion.fechaEstimada!.day,
+                      );
+                      
+                      // Parpadear si la fecha está entre hoy y la fecha de la rutina (inclusive)
+                      // SOLO durante la animación
+                      if (fecha.isAfter(hoy.subtract(const Duration(days: 1))) &&
+                          (fecha.isBefore(fechaRutina.add(const Duration(days: 1))) ||
+                           isSameDay(fecha, fechaRutina))) {
+                        shouldBlink = true;
+                      }
+                    }
+                  }
                   
                   // Si hay una rutina exacta en esta fecha, marcarla
                   if (rutina != null) {
-                    final shouldBlink = _shouldBlink(date);
-                    final color = rutina.colorEstado;
+                    // Usar color original de la rutina por defecto
+                    final colorOriginal = rutina.color;
+                    // Solo usar colorEstado durante la animación de parpadeo
+                    final colorAnimacion = rutina.colorEstado;
+                    final estaEnAnimacion = shouldBlink && rutinaEnAnimacion?.id == rutina.id;
+                    final colorActual = estaEnAnimacion ? colorAnimacion : colorOriginal;
                     
                     Widget dayWidget = Container(
                       margin: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
-                        color: color.withOpacity(0.3),
+                        color: colorActual.withOpacity(0.3),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: color,
+                          color: colorActual,
                           width: 2,
                         ),
                       ),
@@ -264,14 +349,14 @@ class _CalendarWidgetState extends State<CalendarWidget>
                         child: Text(
                           '${date.day}',
                           style: TextStyle(
-                            color: color,
+                            color: colorActual,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                     );
                     
-                    if (shouldBlink) {
+                    if (estaEnAnimacion) {
                       dayWidget = FadeTransition(
                         opacity: _blinkController,
                         child: dayWidget,
@@ -282,19 +367,20 @@ class _CalendarWidgetState extends State<CalendarWidget>
                   }
                   
                   // Si la fecha está en el rango de parpadeo pero no es la fecha exacta
-                  if (rutinasEnRango.isNotEmpty && _shouldBlink(date)) {
-                    final primeraRutina = rutinasEnRango.first;
-                    final color = primeraRutina.colorEstado;
+                  // SOLO mostrar durante la animación
+                  if (shouldBlink && rutinaEnAnimacion != null) {
+                    // Durante la animación usar colorEstado para el recorrido
+                    final colorAnimacion = rutinaEnAnimacion.colorEstado;
                     
                     return FadeTransition(
                       opacity: _blinkController,
                       child: Container(
                         margin: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
-                          color: color.withOpacity(0.2),
+                          color: colorAnimacion.withOpacity(0.2),
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: color.withOpacity(0.5),
+                            color: colorAnimacion.withOpacity(0.5),
                             width: 1.5,
                           ),
                         ),
@@ -302,7 +388,7 @@ class _CalendarWidgetState extends State<CalendarWidget>
                           child: Text(
                             '${date.day}',
                             style: TextStyle(
-                              color: color,
+                              color: colorAnimacion,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -310,6 +396,9 @@ class _CalendarWidgetState extends State<CalendarWidget>
                       ),
                     );
                   }
+                  
+                  // NO marcar días que no sean fechas exactas cuando no hay animación
+                  // Solo mostrar fechas exactas de rutinas con su color original
                   
                   return null;
                 },

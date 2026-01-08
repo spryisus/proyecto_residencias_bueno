@@ -1,70 +1,40 @@
 import 'package:flutter/material.dart';
 import '../domain/entities/rutina.dart';
-import '../data/local/rutina_storage.dart';
 
-/// Widget para mostrar avisos de rutinas con animación de parpadeo
+/// Widget para mostrar avisos de rutinas sincronizados con el calendario
 class RutinaNotificationsWidget extends StatefulWidget {
-  const RutinaNotificationsWidget({super.key});
+  final Rutina? rutinaEnAnimacion; // Rutina que está siendo animada en el calendario
+
+  const RutinaNotificationsWidget({
+    super.key,
+    this.rutinaEnAnimacion,
+  });
 
   @override
   State<RutinaNotificationsWidget> createState() => _RutinaNotificationsWidgetState();
 }
 
-class _RutinaNotificationsWidgetState extends State<RutinaNotificationsWidget>
-    with TickerProviderStateMixin {
-  final RutinaStorage _storage = RutinaStorage();
-  List<Rutina> _rutinas = [];
-  bool _showNotifications = false;
-  late AnimationController _blinkController;
-
+class _RutinaNotificationsWidgetState extends State<RutinaNotificationsWidget> {
   @override
-  void initState() {
-    super.initState();
-    _blinkController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    )..repeat(reverse: true);
-    
-    _loadRutinas();
-    
-    // Esperar 10 segundos antes de mostrar las notificaciones
-    Future.delayed(const Duration(seconds: 10), () {
-      if (mounted) {
-        setState(() {
-          _showNotifications = true;
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _blinkController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadRutinas() async {
-    final rutinas = await _storage.getAllRutinas();
-    
-    if (mounted) {
-      setState(() {
-        _rutinas = rutinas.where((r) => r.fechaEstimada != null).toList();
-      });
+  Widget build(BuildContext context) {
+    // Solo mostrar notificación si hay una rutina en animación
+    if (widget.rutinaEnAnimacion == null) {
+      return const SizedBox.shrink();
     }
     
-    // Recargar cada minuto para actualizar los avisos
-    Future.delayed(const Duration(minutes: 1), () {
-      if (mounted) {
-        _loadRutinas();
-      }
-    });
-  }
-
-  List<Rutina> _getRutinasConAvisos() {
-    return _rutinas.where((rutina) {
-      final dias = rutina.diasRestantes;
-      return dias != null && dias >= 0;
-    }).toList();
+    final rutina = widget.rutinaEnAnimacion!;
+    
+    // Verificar que la rutina tenga fecha y días restantes válidos
+    final dias = rutina.diasRestantes;
+    if (dias == null || dias < 0) {
+      return const SizedBox.shrink();
+    }
+    
+    return Positioned(
+      bottom: 16,
+      right: 16,
+      child: _buildNotificationCard(rutina),
+    );
   }
 
   String _getMensajeAviso(Rutina rutina) {
@@ -81,37 +51,6 @@ class _RutinaNotificationsWidgetState extends State<RutinaNotificationsWidget>
 
   Color _getColorAviso(Rutina rutina) {
     return rutina.colorEstado;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_showNotifications) {
-      return const SizedBox.shrink();
-    }
-
-    final rutinasConAvisos = _getRutinasConAvisos();
-    
-    if (rutinasConAvisos.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Positioned(
-      bottom: 16,
-      right: 16,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: rutinasConAvisos.map((rutina) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8.0),
-            child: FadeTransition(
-              opacity: _blinkController,
-              child: _buildNotificationCard(rutina),
-            ),
-          );
-        }).toList(),
-      ),
-    );
   }
 
   Widget _buildNotificationCard(Rutina rutina) {
@@ -158,4 +97,3 @@ class _RutinaNotificationsWidgetState extends State<RutinaNotificationsWidget>
     );
   }
 }
-

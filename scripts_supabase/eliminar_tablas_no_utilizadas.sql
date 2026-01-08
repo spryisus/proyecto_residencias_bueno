@@ -317,3 +317,4 @@ ORDER BY indexname;
 -- 4. La función buscar_bitacora_por_ultimos_4_digitos() está optimizada para búsquedas
 -- 5. Si necesitas las tablas eliminadas en el futuro, deberás restaurarlas desde un backup
 
+
