@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:bcrypt/bcrypt.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../app/config/supabase_client.dart' show supabaseClient;
 import '../../domain/entities/empleado.dart';
 import '../../domain/entities/rol.dart';
@@ -28,7 +29,6 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
   final Map<String, bool> _selectedRoles = {
     'admin': false,
     'operador': false,
-    'auditor': false,
   };
 
   @override
@@ -110,7 +110,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
       final response = await supabaseClient
           .from('t_roles')
           .select('*')
-          .inFilter('nombre', ['admin', 'operador', 'auditor']);
+          .inFilter('nombre', ['admin', 'operador']);
 
       final roles = (response as List)
           .map((json) => Rol.fromJson(json))
@@ -304,20 +304,36 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
       debugPrint('🔐 Usuario Auth: ${currentUser?.email ?? "N/A"}');
       
       // Si no está autenticado, intentar autenticar con usuario de servicio
+      // Primero verificar si hay una sesión guardada en SharedPreferences
       if (!isAuthenticated) {
-        debugPrint('⚠️ No autenticado en Supabase Auth, intentando autenticación de servicio...');
-        try {
-          const serviceEmail = 'service@telmex.local';
-          const servicePassword = 'ServiceAuth2024!';
-          
-          await supabaseClient.auth.signInWithPassword(
-            email: serviceEmail,
-            password: servicePassword,
-          );
-          debugPrint('✅ Autenticado con usuario de servicio');
-        } catch (authError) {
-          debugPrint('❌ Error al autenticar: $authError');
-          throw Exception('No se pudo autenticar en Supabase. Las políticas RLS pueden estar bloqueando la actualización. Error: $authError');
+        debugPrint('⚠️ No autenticado en Supabase Auth, verificando sesión local...');
+        final prefs = await SharedPreferences.getInstance();
+        final idEmpleado = prefs.getString('id_empleado');
+        final nombreUsuario = prefs.getString('nombre_usuario');
+        final isLoggedIn = prefs.getBool('is_logged_in') ?? false;
+        
+        debugPrint('📱 Sesión local: id_empleado=$idEmpleado, nombre_usuario=$nombreUsuario, is_logged_in=$isLoggedIn');
+        
+        // Si hay una sesión local, intentar autenticar con usuario de servicio
+        if (isLoggedIn && nombreUsuario != null) {
+          debugPrint('⚠️ Sesión local encontrada, intentando autenticación de servicio...');
+          try {
+            const serviceEmail = 'service@telmex.local';
+            const servicePassword = 'ServiceAuth2024!';
+            
+            await supabaseClient.auth.signInWithPassword(
+              email: serviceEmail,
+              password: servicePassword,
+            );
+            debugPrint('✅ Autenticado con usuario de servicio');
+          } catch (authError) {
+            debugPrint('⚠️ No se pudo autenticar con usuario de servicio: $authError');
+            debugPrint('⚠️ Continuando con la operación. Las políticas RLS determinarán si se permite.');
+            // No lanzar excepción aquí, continuar con la operación
+            // Si las políticas RLS bloquean, el error se mostrará en el catch del UPDATE
+          }
+        } else {
+          debugPrint('⚠️ No hay sesión local guardada. Continuando con la operación.');
         }
       }
       
@@ -327,31 +343,30 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
       
       try {
         // Paso 1: Hacer el UPDATE sin select para evitar error PGRST116
-        // Luego verificar con un SELECT separado
+        // Esto es especialmente importante cuando RLS puede bloquear el UPDATE
         try {
-          final updateResult = await supabaseClient
+          // Intentar UPDATE sin .select() primero para evitar PGRST116
+          await supabaseClient
               .from('t_empleados')
               .update({'activo': nuevoEstado})
-              .eq('id_empleado', idEmpleado)
-              .select('id_empleado, activo')
-              .maybeSingle();
+              .eq('id_empleado', idEmpleado);
           
-          // Si el UPDATE devuelve null, puede ser que no se actualizó ninguna fila (RLS bloqueó)
-          if (updateResult == null) {
-            debugPrint('⚠️ UPDATE no devolvió resultados - posible bloqueo por RLS');
-            throw Exception('El UPDATE no se aplicó. Posible causa: políticas RLS bloqueando la actualización. Verifica que estés autenticado correctamente.');
-          }
+          debugPrint('✅ UPDATE ejecutado (sin select)');
           
-          debugPrint('✅ UPDATE ejecutado y confirmado: $updateResult');
+          // Verificar inmediatamente si el UPDATE afectó alguna fila
+          // Esperar un momento para que la BD se sincronice
+          await Future.delayed(const Duration(milliseconds: 300));
+          
         } catch (updateError) {
           // Si el UPDATE falla, verificar si es por RLS
           final errorStr = updateError.toString().toLowerCase();
           if (errorStr.contains('row-level security') || 
               errorStr.contains('rls') || 
               errorStr.contains('policy') ||
-              errorStr.contains('permission')) {
-            debugPrint('❌ Error de RLS detectado: $updateError');
-            throw Exception('Error de permisos: Las políticas RLS están bloqueando la actualización. Verifica que el usuario tenga permisos de administrador en Supabase.');
+              errorStr.contains('permission') ||
+              errorStr.contains('pgrst116')) {
+            debugPrint('❌ Error de RLS o sin filas detectado: $updateError');
+            throw Exception('Error de permisos: Las políticas RLS están bloqueando la actualización. Verifica que estés autenticado correctamente en Supabase Auth.');
           }
           // Si es otro error, propagarlo
           debugPrint('❌ Error en UPDATE: $updateError');
@@ -359,7 +374,6 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
         }
         
         // Paso 1.5: Verificar inmediatamente con SELECT
-        await Future.delayed(const Duration(milliseconds: 200));
         final updateResponse = await supabaseClient
             .from('t_empleados')
             .select('id_empleado, activo')
@@ -743,29 +757,35 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Usuarios del Sistema',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                      Flexible(
+                        child: Text(
+                          'Usuarios del Sistema',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _showCreateForm = !_showCreateForm;
-                            if (!_showCreateForm) {
-                              _nombreUsuarioController.clear();
-                              _contrasenaController.clear();
-                              _confirmarContrasenaController.clear();
-                              _selectedRoles.updateAll((key, value) => false);
-                            }
-                          });
-                        },
-                        icon: Icon(_showCreateForm ? Icons.close : Icons.person_add),
-                        label: Text(_showCreateForm ? 'Cancelar' : 'Nuevo Usuario'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Theme.of(context).colorScheme.primary,
-                          foregroundColor: Colors.white,
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _showCreateForm = !_showCreateForm;
+                              if (!_showCreateForm) {
+                                _nombreUsuarioController.clear();
+                                _contrasenaController.clear();
+                                _confirmarContrasenaController.clear();
+                                _selectedRoles.updateAll((key, value) => false);
+                              }
+                            });
+                          },
+                          icon: Icon(_showCreateForm ? Icons.close : Icons.person_add),
+                          label: Text(_showCreateForm ? 'Cancelar' : 'Nuevo Usuario'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).colorScheme.primary,
+                            foregroundColor: Colors.white,
+                          ),
                         ),
                       ),
                     ],
@@ -980,9 +1000,6 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                         break;
                       case 'operador':
                         chipColor = Colors.blue;
-                        break;
-                      case 'auditor':
-                        chipColor = Colors.orange;
                         break;
                       default:
                         chipColor = Colors.grey;

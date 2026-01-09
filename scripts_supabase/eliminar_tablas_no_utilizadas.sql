@@ -318,3 +318,5 @@ ORDER BY indexname;
 -- 5. Si necesitas las tablas eliminadas en el futuro, deberás restaurarlas desde un backup
 
 
+
+

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/repositories/inventario_repository.dart';
 import '../../domain/entities/categoria.dart';
@@ -277,18 +278,19 @@ class _InventoryTypeSelectionScreenState extends State<InventoryTypeSelectionScr
         backgroundColor: const Color(0xFF003366),
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.qr_code_scanner),
-            tooltip: 'Escanear código QR',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const QRScannerScreen(),
-                ),
-              );
-            },
-          ),
+          if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS))
+            IconButton(
+              icon: const Icon(Icons.qr_code_scanner),
+              tooltip: 'Escanear código QR',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const QRScannerScreen(),
+                  ),
+                );
+              },
+            ),
         ],
       ),
       body: _isLoading

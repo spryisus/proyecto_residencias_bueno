@@ -88,3 +88,5 @@ psql -h db.eulpljyplqyjuyuvvnwm.supabase.co -p 5432 -U postgres -d postgres -c "
 El script `backup_database.sh` ya incluye `--no-version-check` que debería resolver el problema sin necesidad de actualizar. Si aún tienes problemas, actualiza el cliente como se indica arriba.
 
 
+
+

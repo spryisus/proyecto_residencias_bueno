@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../app/config/supabase_client.dart' show supabaseClient;
 import '../../data/services/sdr_export_service.dart';
 
 class SolicitudSdrScreen extends StatefulWidget {
@@ -14,9 +16,9 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
   // Controladores para Datos de Falla de aviso
   final _fechaController = TextEditingController();
   final _descripcionAvisoController = TextEditingController();
-  final _grupoPlanificadorController = TextEditingController(text: 'LD. 70');
-  final _puestoTrabajoResponsableController = TextEditingController(text: 'PTAZ POZA RICA');
-  final _autorAvisoController = TextEditingController(text: '0117');
+  final _grupoPlanificadorController = TextEditingController();
+  final _puestoTrabajoResponsableController = TextEditingController();
+  final _autorAvisoController = TextEditingController();
   final _motivoIntervencionController = TextEditingController();
   final _modeloDanoController = TextEditingController();
   final _causaAveriaController = TextEditingController();
@@ -30,13 +32,13 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
   final _prioridadController = TextEditingController();
   
   // Controladores para Lugar del Daño
-  final _centroEmplazamientoController = TextEditingController(text: 'LDTX');
+  final _centroEmplazamientoController = TextEditingController();
   final _areaEmpresaController = TextEditingController();
-  final _puestoTrabajoEmplazamientoController = TextEditingController(text: 'COM-PUE');
-  final _divisionController = TextEditingController(text: '70');
+  final _puestoTrabajoEmplazamientoController = TextEditingController();
+  final _divisionController = TextEditingController();
   final _estadoInstalacionLugarController = TextEditingController();
   final _datosDisponiblesController = TextEditingController();
-  final _emplazamiento1Controller = TextEditingController(text: 'PTAZ PORZA RICA');
+  final _emplazamiento1Controller = TextEditingController();
   final _emplazamiento2Controller = TextEditingController();
   final _localController = TextEditingController();
   final _campoClasificacionController = TextEditingController();
@@ -48,6 +50,15 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
   // Controladores para Datos de la unidad que se montó
   final _tipoUnidadMontadaController = TextEditingController();
   final _noSerieUnidadMontadaController = TextEditingController();
+  
+  bool _isLoadingFixedData = true;
+  Map<String, String> _fixedDataMap = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFixedData();
+  }
 
   @override
   void dispose() {
@@ -79,6 +90,99 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
     _tipoUnidadMontadaController.dispose();
     _noSerieUnidadMontadaController.dispose();
     super.dispose();
+  }
+
+  /// Carga los datos fijos desde la base de datos
+  Future<void> _loadFixedData() async {
+    try {
+      setState(() {
+        _isLoadingFixedData = true;
+      });
+
+      final response = await supabaseClient
+          .from('t_datos_fijos_sdr')
+          .select('campo_nombre, valor')
+          .order('campo_nombre');
+
+      final dataMap = <String, String>{};
+      for (var row in response) {
+        dataMap[row['campo_nombre'] as String] = row['valor'] as String;
+      }
+
+      // Asignar valores a los controladores
+      _grupoPlanificadorController.text = dataMap['grupo_planificador'] ?? 'LD. 70';
+      _puestoTrabajoResponsableController.text = dataMap['puesto_trabajo_responsable'] ?? 'PTAZ POZA RICA';
+      _autorAvisoController.text = dataMap['autor_aviso'] ?? '0117';
+      _centroEmplazamientoController.text = dataMap['centro_emplazamiento'] ?? 'LDTX';
+      _puestoTrabajoEmplazamientoController.text = dataMap['puesto_trabajo_emplazamiento'] ?? 'COM-PUE';
+      _divisionController.text = dataMap['division'] ?? '70';
+      _emplazamiento1Controller.text = dataMap['emplazamiento_1'] ?? 'PTAZ PORZA RICA';
+
+      if (mounted) {
+        setState(() {
+          _fixedDataMap = dataMap;
+          _isLoadingFixedData = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error al cargar datos fijos SDR: $e');
+      // Usar valores por defecto si falla la carga
+      _grupoPlanificadorController.text = 'LD. 70';
+      _puestoTrabajoResponsableController.text = 'PTAZ POZA RICA';
+      _autorAvisoController.text = '0117';
+      _centroEmplazamientoController.text = 'LDTX';
+      _puestoTrabajoEmplazamientoController.text = 'COM-PUE';
+      _divisionController.text = '70';
+      _emplazamiento1Controller.text = 'PTAZ PORZA RICA';
+      
+      if (mounted) {
+        setState(() {
+          _isLoadingFixedData = false;
+        });
+      }
+    }
+  }
+
+  /// Guarda un dato fijo en la base de datos
+  Future<void> _saveFixedData(String campoNombre, String valor) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final nombreUsuario = prefs.getString('nombre_usuario') ?? 'Sistema';
+
+      // Actualizar o insertar el valor
+      await supabaseClient
+          .from('t_datos_fijos_sdr')
+          .upsert({
+            'campo_nombre': campoNombre,
+            'valor': valor,
+            'actualizado_en': DateTime.now().toIso8601String(),
+            'actualizado_por': nombreUsuario,
+          }, onConflict: 'campo_nombre');
+
+      // Actualizar el mapa local
+      _fixedDataMap[campoNombre] = valor;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Campo "$campoNombre" actualizado. Todos los usuarios verán el cambio.'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error al guardar dato fijo SDR: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error al guardar: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   Map<String, dynamic> _getFormData() {
@@ -382,7 +486,9 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
+      body: _isLoadingFixedData
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
@@ -533,22 +639,44 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
     String? Function(String?)? validator,
     String? helperText,
     bool readOnly = false,
+    String? fixedDataField, // Nombre del campo en la BD para datos fijos
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.black87,
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+            if (fixedDataField != null)
+              Tooltip(
+                message: 'Campo compartido: los cambios serán visibles para todos los usuarios',
+                child: Icon(
+                  Icons.info_outline,
+                  size: 16,
+                  color: Colors.blue[600],
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
           readOnly: readOnly,
+          onChanged: fixedDataField != null
+              ? (value) {
+                  // Guardar automáticamente cuando cambie un campo fijo
+                  _saveFixedData(fixedDataField, value);
+                }
+              : null,
           decoration: InputDecoration(
             hintText: hintText,
             hintStyle: const TextStyle(
@@ -556,9 +684,14 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
               fontStyle: FontStyle.italic,
             ),
             border: const OutlineInputBorder(),
-            helperText: helperText,
+            helperText: helperText ?? (fixedDataField != null 
+                ? 'Campo compartido: los cambios se guardan automáticamente'
+                : null),
             filled: readOnly,
             fillColor: readOnly ? Colors.grey[100] : null,
+            suffixIcon: fixedDataField != null
+                ? Icon(Icons.cloud_upload_outlined, size: 18, color: Colors.blue[600])
+                : null,
           ),
           maxLines: maxLines ?? 1,
           validator: validator,
@@ -656,21 +789,21 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
           controller: _grupoPlanificadorController,
           label: 'Grupo planificador',
           hintText: 'Ingrese el grupo planificador',
-          readOnly: true,
+          fixedDataField: 'grupo_planificador',
         ),
         const SizedBox(height: 16),
         _buildFormField(
           controller: _puestoTrabajoResponsableController,
           label: 'Puesto de trabajo responsable',
           hintText: 'Ingrese el puesto de trabajo responsable',
-          readOnly: true,
+          fixedDataField: 'puesto_trabajo_responsable',
         ),
         const SizedBox(height: 16),
         _buildFormField(
           controller: _autorAvisoController,
           label: 'Autor de aviso',
           hintText: 'Ingrese el autor del aviso',
-          readOnly: true,
+          fixedDataField: 'autor_aviso',
         ),
         const SizedBox(height: 16),
         _buildFormField(
@@ -794,7 +927,7 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
                 controller: _grupoPlanificadorController,
                 label: 'Grupo planificador',
                 hintText: 'Ingrese el grupo planificador',
-                readOnly: true,
+                fixedDataField: 'grupo_planificador',
               ),
             ),
             const SizedBox(width: 16),
@@ -803,7 +936,7 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
                 controller: _puestoTrabajoResponsableController,
                 label: 'Puesto de trabajo responsable',
                 hintText: 'Ingrese el puesto de trabajo responsable',
-                readOnly: true,
+                fixedDataField: 'puesto_trabajo_responsable',
               ),
             ),
           ],
@@ -813,7 +946,7 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
           controller: _autorAvisoController,
           label: 'Autor de aviso',
           hintText: 'Ingrese el autor del aviso',
-          readOnly: true,
+          fixedDataField: 'autor_aviso',
         ),
         const SizedBox(height: 16),
         _buildFormField(
@@ -910,7 +1043,7 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
           controller: _centroEmplazamientoController,
           label: 'Centro Emplazamiento',
           hintText: 'Ingrese el centro de emplazamiento',
-          readOnly: true,
+          fixedDataField: 'centro_emplazamiento',
         ),
         const SizedBox(height: 16),
         _buildDropdownField(
@@ -936,14 +1069,14 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
           controller: _puestoTrabajoEmplazamientoController,
           label: 'Puesto trabajo de emplazamiento',
           hintText: 'Ingrese el puesto de trabajo de emplazamiento',
-          readOnly: true,
+          fixedDataField: 'puesto_trabajo_emplazamiento',
         ),
         const SizedBox(height: 16),
         _buildFormField(
           controller: _divisionController,
           label: 'División',
           hintText: 'Ingrese la división',
-          readOnly: true,
+          fixedDataField: 'division',
         ),
         const SizedBox(height: 16),
         _buildFormField(
@@ -962,7 +1095,7 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
           controller: _emplazamiento1Controller,
           label: 'Emplazamiento',
           hintText: 'Ingrese el emplazamiento',
-          readOnly: true,
+          fixedDataField: 'emplazamiento_1',
         ),
         const SizedBox(height: 16),
         _buildFormField(
@@ -997,7 +1130,7 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
                 controller: _centroEmplazamientoController,
                 label: 'Centro Emplazamiento',
                 hintText: 'Ingrese el centro de emplazamiento',
-                readOnly: true,
+                fixedDataField: 'centro_emplazamiento',
               ),
             ),
             const SizedBox(width: 16),
@@ -1031,7 +1164,7 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
                 controller: _puestoTrabajoEmplazamientoController,
                 label: 'Puesto trabajo de emplazamiento',
                 hintText: 'Ingrese el puesto de trabajo de emplazamiento',
-                readOnly: true,
+                fixedDataField: 'puesto_trabajo_emplazamiento',
               ),
             ),
             const SizedBox(width: 16),
@@ -1040,7 +1173,7 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
                 controller: _divisionController,
                 label: 'División',
                 hintText: 'Ingrese la división',
-                readOnly: true,
+                fixedDataField: 'division',
               ),
             ),
           ],
@@ -1073,6 +1206,7 @@ class _SolicitudSdrScreenState extends State<SolicitudSdrScreen> {
                 controller: _emplazamiento1Controller,
                 label: 'Emplazamiento',
                 hintText: 'Ingrese el emplazamiento',
+                fixedDataField: 'emplazamiento_1',
               ),
             ),
             const SizedBox(width: 16),

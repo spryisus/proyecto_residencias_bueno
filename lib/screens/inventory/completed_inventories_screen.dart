@@ -227,6 +227,44 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
     debugPrint('   - session.categoryId: ${session.categoryId}');
     debugPrint('   - session.status: ${session.status}');
     
+    // Verificar permisos de admin: solo puede ver detalles de inventarios pendientes de otros usuarios
+    final isAdmin = await _checkIsAdmin();
+    if (isAdmin) {
+      final prefs = await SharedPreferences.getInstance();
+      final currentUserId = prefs.getString('id_empleado');
+      
+      // Si el inventario está completado, no permitir ver detalles
+      if (session.status == InventorySessionStatus.completed) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Como administrador, solo puedes ver detalles de inventarios pendientes de otros usuarios'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+      
+      // Si el inventario es del mismo admin, no permitir ver detalles
+      if (session.ownerId == currentUserId) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Como administrador, solo puedes ver detalles de inventarios pendientes de otros usuarios'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+      
+      // Si el inventario está pendiente pero no es del admin, permitir verlo
+      // (continuar con el flujo normal)
+    }
+    
     try {
       
       // PRIMERO: Verificar si es SICOR (antes que cómputo)

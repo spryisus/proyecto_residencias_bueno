@@ -36,7 +36,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  bool _isTestingConnection = false;
   bool _isLoggingIn = false;
 
   /// Guarda la sesión del usuario en SharedPreferences
@@ -61,53 +60,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     // Si no es bcrypt, comparar directamente (texto plano)
     return inputPassword == storedPassword;
-  }
-
-  Future<void> _testConnection() async {
-    setState(() {
-      _isTestingConnection = true;
-    });
-
-    try {
-      final isConnected = await testSupabaseConnection();
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              isConnected 
-                ? '✅ Conexión a Supabase exitosa!' 
-                : '❌ Error de conexión a Supabase',
-            ),
-            backgroundColor: isConnected ? Colors.green : Colors.red,
-            duration: const Duration(seconds: 3),
-            action: SnackBarAction(
-              label: 'Cerrar',
-              textColor: Colors.white,
-              onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              },
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Error: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isTestingConnection = false;
-        });
-      }
-    }
   }
 
   Future<void> _login() async {
@@ -160,7 +112,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       // Verificar que tenga al menos uno de los roles permitidos
-      final rolesPermitidos = ['admin', 'operador', 'auditor'];
+      final rolesPermitidos = ['admin', 'operador'];
       final tieneRolPermitido = roles.any((rol) => 
           rolesPermitidos.contains(rol['t_roles']['nombre']?.toString().toLowerCase()));
 
@@ -277,19 +229,6 @@ class _LoginScreenState extends State<LoginScreen> {
       appBar: AppBar(
         title: const Text('Inicio de sesión Larga Distancia'),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const SettingsScreen(),
-                ),
-              );
-            },
-          ),
-        ],
       ),
       body: Center(
         child: SingleChildScrollView(
@@ -372,22 +311,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : const Text('Iniciar sesión'),
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        TextButton(
-                          onPressed: _isTestingConnection ? null : _testConnection,
-                          child: Text(
-                            'Probar Conexión Supabase',
-                            style: TextStyle(
-                              inherit: false,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: _isTestingConnection 
-                                ? Theme.of(context).disabledColor 
-                                : Theme.of(context).colorScheme.primary,
-                              decoration: TextDecoration.none,
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -463,8 +386,6 @@ class _WelcomePageState extends State<WelcomePage> {
             userRole = 'Administrador';
           } else if (roleName == 'operador') {
             userRole = 'Operador';
-          } else if (roleName == 'auditor') {
-            userRole = 'Auditor';
           }
         }
       }
@@ -825,7 +746,7 @@ class _WelcomePageState extends State<WelcomePage> {
                   ),
                 ),
                 SizedBox(width: MediaQuery.of(context).size.width < 600 ? 8 : 12),
-                Expanded(
+                Flexible(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -834,7 +755,7 @@ class _WelcomePageState extends State<WelcomePage> {
                       Text(
                         'Gestor de Refacciones y Envios',
                         style: TextStyle(
-                          fontSize: MediaQuery.of(context).size.width < 600 ? 14 : 18,
+                          fontSize: MediaQuery.of(context).size.width < 600 ? 13 : 18,
                           fontWeight: FontWeight.bold,
                           color: const Color(0xFF003366),
                         ),
@@ -1432,26 +1353,25 @@ class _WelcomePageState extends State<WelcomePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Mensaje de bienvenida
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Bienvenido 👋',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Panel de administración - Sistema de Larga Distancia',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
+              Text(
+                'Bienvenido 👋',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 32,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Panel de operación - Sistema de Larga Distancia',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.grey[600],
+                  fontSize: 16,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
@@ -1470,18 +1390,12 @@ class _WelcomePageState extends State<WelcomePage> {
                   children: [
                     Expanded(
                       flex: 1,
-                      child: Column(
-                        children: [
-                          _buildEnhancedClockWidget(),
-                          const SizedBox(height: 16),
-                          RutinasWidget(
-                            onRutinasChanged: (rutinas) {
-                              setState(() {
-                                _rutinas = rutinas;
-                              });
-                            },
-                          ),
-                        ],
+                      child: RutinasWidget(
+                        onRutinasChanged: (rutinas) {
+                          setState(() {
+                            _rutinas = rutinas;
+                          });
+                        },
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -1503,8 +1417,6 @@ class _WelcomePageState extends State<WelcomePage> {
               } else {
                 return Column(
                   children: [
-                    _buildEnhancedClockWidget(),
-                    const SizedBox(height: 16),
                     RutinasWidget(
                       onRutinasChanged: (rutinas) {
                         setState(() {
@@ -1549,7 +1461,7 @@ class _WelcomePageState extends State<WelcomePage> {
           crossAxisCount: crossAxisCount,
           crossAxisSpacing: isMobile ? 8 : 16,
           mainAxisSpacing: isMobile ? 8 : 16,
-          childAspectRatio: isMobile ? 0.95 : 1.2,
+          childAspectRatio: isMobile ? 1.0 : 1.3,
           padding: EdgeInsets.all(isMobile ? 8 : 16),
           children: [
             _buildStatCard(
@@ -1634,153 +1546,85 @@ class _WelcomePageState extends State<WelcomePage> {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: EdgeInsets.all(isMobile ? 10 : 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: EdgeInsets.all(isMobile ? 6 : 14),
-                    decoration: BoxDecoration(
-                      color: iconColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(icon, color: iconColor, size: isMobile ? 24 : 48),
-                  ),
-                  if (badge != null)
+        child: ClipRect(
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 10 : 20,
+              vertical: isMobile ? 12 : 16,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
                     Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isMobile ? 5 : 8,
-                        vertical: isMobile ? 2 : 4,
-                      ),
+                      padding: EdgeInsets.all(isMobile ? 8 : 16),
                       decoration: BoxDecoration(
-                        color: badgeColor,
+                        color: iconColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Text(
-                        badge,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: isMobile ? 8 : 11,
-                          fontWeight: FontWeight.bold,
+                      child: Icon(icon, color: iconColor, size: isMobile ? 32 : 56),
+                    ),
+                    if (badge != null)
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isMobile ? 6 : 10,
+                          vertical: isMobile ? 3 : 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: badgeColor,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          badge,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: isMobile ? 10 : 13,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                    ),
-                ],
-              ),
-              SizedBox(height: isMobile ? 6 : 12),
-              Text(
-                value,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  fontSize: isMobile ? 18 : null,
+                  ],
                 ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
-              SizedBox(height: isMobile ? 2 : 4),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey[600],
-                  fontSize: isMobile ? 10 : null,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(height: isMobile ? 4 : 8),
+                      Text(
+                        value,
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          fontSize: isMobile ? 28 : 36,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                      SizedBox(height: isMobile ? 2 : 4),
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.grey[600],
+                          fontSize: isMobile ? 14 : 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 2,
+                      ),
+                    ],
+                  ),
                 ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 2,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildEnhancedClockWidget() {
-    return Card(
-      elevation: 2,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: const Color(0xFF003366),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.access_time, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                const Text(
-                  'HORA ACTUAL',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            StreamBuilder<DateTime>(
-              stream: Stream.periodic(const Duration(seconds: 1), (_) => DateTime.now()),
-              builder: (context, snapshot) {
-                final now = snapshot.data ?? DateTime.now();
-                final timeFormat = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-                return Text(
-                  timeFormat,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 8),
-            StreamBuilder<DateTime>(
-              stream: Stream.periodic(const Duration(seconds: 1), (_) => DateTime.now()),
-              builder: (context, snapshot) {
-                final now = snapshot.data ?? DateTime.now();
-                final dateFormat = '${_getDayName(now.weekday)}, ${now.day} ${_getMonthName(now.month)} ${now.year}';
-                return Text(
-                  dateFormat,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Ciudad de México, México',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _getDayName(int weekday) {
-    const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-    return days[weekday - 1];
-  }
-
-  String _getMonthName(int month) {
-    const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
-                    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-    return months[month - 1];
-  }
 
 }

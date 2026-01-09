@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:http/http.dart' as http;
 import '../../app/config/supabase_client.dart' show supabaseClient;
 import '../../domain/entities/bitacora_envio.dart';
 import '../../domain/entities/estado_envio.dart';
 import '../../data/services/bitacora_export_service.dart';
+import '../../data/services/storage_service.dart';
+import '../../core/utils/file_saver_helper.dart';
+
+// Importación condicional para web
+import '../../core/utils/web_file_helper_stub.dart'
+    if (dart.library.html) '../../core/utils/web_file_helper.dart' as web_helper;
 
 // Clase auxiliar para campos
 class _FieldItem {
@@ -810,11 +820,29 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
         );
       }
 
-      // Eliminar cada bitácora
+      // Eliminar cada bitácora y sus PDFs asociados
       int eliminadas = 0;
+      int pdfsEliminados = 0;
+      final storageService = StorageService();
+      
       for (final bitacora in bitacorasDelAnio) {
         if (bitacora.idBitacora != null) {
           try {
+            // Si hay un PDF asociado, eliminarlo del storage primero
+            if (bitacora.anexos != null && 
+                bitacora.anexos!.isNotEmpty && 
+                _isPdfUrl(bitacora.anexos)) {
+              try {
+                await storageService.deleteFile(bitacora.anexos!);
+                pdfsEliminados++;
+                debugPrint('✅ PDF eliminado: ${bitacora.anexos}');
+              } catch (e) {
+                debugPrint('⚠️ Error al eliminar PDF ${bitacora.anexos}: $e');
+                // Continuar con la eliminación de la bitácora de todas formas
+              }
+            }
+
+            // Eliminar la bitácora de la base de datos
             await supabaseClient
                 .from('t_bitacora_envios')
                 .delete()
@@ -834,7 +862,9 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ Se eliminaron $eliminadas bitácora${eliminadas != 1 ? 's' : ''} del año $year'),
+            content: Text(
+              '✅ Se eliminaron $eliminadas bitácora${eliminadas != 1 ? 's' : ''}${pdfsEliminados > 0 ? ' y $pdfsEliminados PDF${pdfsEliminados != 1 ? 's' : ''}' : ''} del año $year'
+            ),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 3),
           ),
@@ -1104,14 +1134,14 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
       context: context,
       builder: (context) => _BitacoraFormDialog(
         fechaInicial: fechaInicial,
-        onSave: (bitacora) async {
-          await _saveBitacora(bitacora);
+        onSave: (bitacora, pdfFile, pdfToDelete) async {
+          await _saveBitacora(bitacora, pdfFile, pdfToDelete);
         },
       ),
     );
   }
 
-  Future<void> _saveBitacora(BitacoraEnvio bitacora) async {
+  Future<void> _saveBitacora(BitacoraEnvio bitacora, File? pdfFile, String? pdfToDelete) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final nombreUsuario = prefs.getString('nombre_usuario') ?? 'Sistema';
@@ -1179,14 +1209,46 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
       );
 
       // Usar toJsonForInsert() para excluir id_bitacora (auto-generado)
+      final response = await supabaseClient
+          .from('t_bitacora_envios')
+          .insert(nuevaBitacora.toJsonForInsert())
+          .select()
+          .single();
+
+      // Obtener el ID de la bitácora recién creada
+      final idBitacora = response['id_bitacora'] as int;
+
+      // Si hay un archivo PDF, subirlo ahora que tenemos el ID
+      String? pdfUrl;
+      if (pdfFile != null) {
+        try {
+          final storageService = StorageService();
+          pdfUrl = await storageService.uploadPdfFile(pdfFile, idBitacora);
+          
+          // Actualizar la bitácora con la URL del PDF
       await supabaseClient
           .from('t_bitacora_envios')
-          .insert(nuevaBitacora.toJsonForInsert());
+              .update({'anexos': pdfUrl})
+              .eq('id_bitacora', idBitacora);
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('⚠️ Bitácora guardada, pero error al subir PDF: $e'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+        }
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Bitácora registrada exitosamente'),
+          SnackBar(
+            content: Text(pdfFile != null && pdfUrl != null
+                ? '✅ Bitácora registrada y PDF subido exitosamente'
+                : '✅ Bitácora registrada exitosamente'),
             backgroundColor: Colors.green,
           ),
         );
@@ -2003,37 +2065,7 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
                   const SizedBox(height: 16),
                   const Divider(),
                   const SizedBox(height: 8),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.attach_file,
-                        size: 18,
-                        color: Colors.grey[700],
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'ANEXOS',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.grey[700],
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            SelectableText(
-                              bitacora.anexos!,
-                              style: const TextStyle(fontSize: 14),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                  _buildAnexosWidget(bitacora.anexos!),
                 ],
                 // Observaciones (si existe)
                 if (bitacora.observaciones != null &&
@@ -2084,37 +2116,114 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
 
   /// Construye el encabezado de la tarjeta (consecutivo y fecha)
   Widget _buildCardHeader(BitacoraEnvio bitacora) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF003366),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                'CONS. ${bitacora.consecutivo}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Icon(
+              Icons.calendar_today,
+              size: 16,
+              color: Colors.grey[600],
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                _formatDate(bitacora.fecha),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[700],
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _buildPreviewData(bitacora),
+      ],
+    );
+  }
+
+  /// Construye la previsualización de datos de la bitácora
+  Widget _buildPreviewData(BitacoraEnvio bitacora) {
+    final items = <Widget>[];
+    
+    if (bitacora.cobo != null && bitacora.cobo!.isNotEmpty) {
+      items.add(_buildPreviewItem('COBO', bitacora.cobo!, Icons.label));
+    }
+    if (bitacora.tarjeta != null && bitacora.tarjeta!.isNotEmpty) {
+      items.add(_buildPreviewItem('Tarjeta', bitacora.tarjeta!, Icons.credit_card));
+    }
+    if (bitacora.codigo != null && bitacora.codigo!.isNotEmpty) {
+      items.add(_buildPreviewItem('Código', bitacora.codigo!, Icons.qr_code));
+    }
+    if (bitacora.serie != null && bitacora.serie!.isNotEmpty) {
+      items.add(_buildPreviewItem('Serie', bitacora.serie!, Icons.confirmation_number));
+    }
+
+    if (items.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[300]!, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: items.asMap().entries.map((entry) {
+          final index = entry.key;
+          final isLast = index == items.length - 1;
+          return Padding(
+            padding: EdgeInsets.only(bottom: isLast ? 0 : 4),
+            child: entry.value,
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  /// Construye un item individual de la previsualización
+  Widget _buildPreviewItem(String label, String value, IconData icon) {
     return Row(
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: const Color(0xFF003366),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Text(
-            'CONS. ${bitacora.consecutivo}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
-            ),
+        Icon(icon, size: 14, color: Colors.grey[600]),
+        const SizedBox(width: 6),
+        Text(
+          '$label: ',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey[700],
           ),
         ),
-        const SizedBox(width: 12),
-        Icon(
-          Icons.calendar_today,
-          size: 16,
-          color: Colors.grey[600],
-        ),
-        const SizedBox(width: 4),
         Expanded(
           child: Text(
-            _formatDate(bitacora.fecha),
+            value,
             style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: Colors.grey[700],
+              fontSize: 11,
+              color: Colors.grey[800],
             ),
             overflow: TextOverflow.ellipsis,
           ),
@@ -2322,15 +2431,8 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
                   ),
                 ),
                 DataCell(
-                  bitacora.anexos != null
-                      ? SelectableText(
-                          'ANEXOS',
-                          style: const TextStyle(
-                            decoration: TextDecoration.underline,
-                            fontSize: 12,
-                            color: Colors.blue,
-                          ),
-                        )
+                  bitacora.anexos != null && bitacora.anexos!.isNotEmpty
+                      ? _buildAnexosButton(bitacora.anexos!, compact: true)
                       : const SelectableText(
                           '-',
                           style: TextStyle(fontSize: 12),
@@ -2377,19 +2479,74 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
       context: context,
       builder: (context) => _BitacoraFormDialog(
         bitacora: bitacora,
-        onSave: (updatedBitacora) async {
-          await _updateBitacora(updatedBitacora);
+        onSave: (updatedBitacora, pdfFile, pdfToDelete) async {
+          await _updateBitacora(updatedBitacora, pdfFile, pdfToDelete);
         },
       ),
     );
   }
 
-  Future<void> _updateBitacora(BitacoraEnvio bitacora) async {
+  Future<void> _updateBitacora(BitacoraEnvio bitacora, File? pdfFile, String? pdfToDelete) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final nombreUsuario = prefs.getString('nombre_usuario') ?? 'Sistema';
 
+      // Manejar eliminación del PDF si se marcó para eliminar
+      String? pdfUrl = bitacora.anexos;
+      if (pdfToDelete != null && pdfToDelete.isNotEmpty) {
+        try {
+          final storageService = StorageService();
+          debugPrint('🗑️ Intentando eliminar PDF: $pdfToDelete');
+          await storageService.deleteFile(pdfToDelete);
+          pdfUrl = null; // Limpiar la URL solo si se eliminó exitosamente
+          debugPrint('✅ PDF eliminado del storage exitosamente');
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('✅ PDF eliminado del storage'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        } catch (e) {
+          debugPrint('❌ Error al eliminar PDF del storage: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('⚠️ Error al eliminar PDF del storage: $e'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+          // Si falla la eliminación, mantener la URL original
+          // No limpiar pdfUrl para que el usuario sepa que el archivo sigue ahí
+        }
+      }
+
+      // Si hay un archivo PDF nuevo, subirlo
+      if (pdfFile != null) {
+        try {
+          final storageService = StorageService();
+          pdfUrl = await storageService.uploadPdfFile(pdfFile, bitacora.idBitacora!);
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('❌ Error al subir PDF: $e'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          return; // No actualizar la bitácora si falla la subida del PDF
+        }
+      }
+
       final updatedBitacora = bitacora.copyWith(
+        anexos: pdfUrl,
         actualizadoEn: DateTime.now(),
         actualizadoPor: nombreUsuario,
       );
@@ -2401,8 +2558,14 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Bitácora actualizada exitosamente'),
+          SnackBar(
+            content: Text(
+              pdfFile != null && pdfUrl != null
+                  ? '✅ Bitácora actualizada y PDF subido exitosamente'
+                  : pdfToDelete != null
+                      ? '✅ Bitácora actualizada y PDF eliminado exitosamente'
+                      : '✅ Bitácora actualizada exitosamente'
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -2447,6 +2610,22 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
 
   Future<void> _deleteBitacora(BitacoraEnvio bitacora) async {
     try {
+      // Si hay un PDF asociado, eliminarlo del storage primero
+      if (bitacora.anexos != null && 
+          bitacora.anexos!.isNotEmpty && 
+          _isPdfUrl(bitacora.anexos)) {
+        try {
+          final storageService = StorageService();
+          await storageService.deleteFile(bitacora.anexos!);
+          debugPrint('✅ PDF eliminado del storage: ${bitacora.anexos}');
+        } catch (e) {
+          // Si falla la eliminación del PDF, registrar pero continuar
+          debugPrint('⚠️ Error al eliminar PDF del storage: $e');
+          // Continuar con la eliminación de la bitácora de todas formas
+        }
+      }
+
+      // Eliminar la bitácora de la base de datos
       await supabaseClient
           .from('t_bitacora_envios')
           .delete()
@@ -2455,7 +2634,7 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Bitácora eliminada exitosamente'),
+            content: Text('✅ Bitácora y PDF eliminados exitosamente'),
             backgroundColor: Colors.green,
           ),
         );
@@ -2492,6 +2671,22 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
               _buildDetailRow('Envía', bitacora.envia),
               _buildDetailRow('Recibe', bitacora.recibe),
               _buildDetailRow('Guía', bitacora.guia),
+              if (bitacora.anexos != null && bitacora.anexos!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(
+                      width: 100,
+                      child: Text(
+                        'Anexos:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    Expanded(child: _buildAnexosButton(bitacora.anexos!)),
+                  ],
+                ),
+              ] else
               _buildDetailRow('Anexos', bitacora.anexos),
               _buildDetailRow('Observaciones', bitacora.observaciones),
               _buildDetailRow('COBO', bitacora.cobo),
@@ -2625,6 +2820,220 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
     );
   }
 
+  /// Verifica si el anexo es una URL (especialmente PDF)
+  bool _isPdfUrl(String? anexo) {
+    if (anexo == null || anexo.isEmpty) return false;
+    return anexo.startsWith('http://') || 
+           anexo.startsWith('https://') ||
+           anexo.toLowerCase().endsWith('.pdf');
+  }
+
+  /// Construye el widget para mostrar anexos con botón de PDF
+  Widget _buildAnexosWidget(String anexo) {
+    if (_isPdfUrl(anexo)) {
+      return _buildAnexosButton(anexo);
+    }
+    
+    // Si no es URL, mostrar como texto normal
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          Icons.attach_file,
+          size: 18,
+          color: Colors.grey[700],
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'ANEXOS',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 4),
+              SelectableText(
+                anexo,
+                style: const TextStyle(fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Construye un botón para ver/descargar el PDF
+  Widget _buildAnexosButton(String pdfUrl, {bool compact = false}) {
+    return InkWell(
+      onTap: () => _openPdfUrl(pdfUrl),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: compact 
+            ? const EdgeInsets.symmetric(horizontal: 8, vertical: 4)
+            : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.red.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: Colors.red.shade300,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.picture_as_pdf,
+              color: Colors.red.shade700,
+              size: compact ? 18 : 24,
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                compact ? 'Descargar PDF' : 'Descargar PDF',
+                style: TextStyle(
+                  color: Colors.red.shade700,
+                  fontWeight: FontWeight.w600,
+                  fontSize: compact ? 12 : 14,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.download,
+              color: Colors.red.shade700,
+              size: compact ? 14 : 16,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Descarga el PDF directamente a la carpeta de Descargas
+  Future<void> _openPdfUrl(String url) async {
+    try {
+      // Mostrar indicador de carga
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+                SizedBox(width: 12),
+                Text('Descargando PDF...'),
+              ],
+            ),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
+      // Descargar el archivo desde la URL
+      final response = await http.get(Uri.parse(url));
+      
+      if (response.statusCode != 200) {
+        throw Exception('Error al descargar: ${response.statusCode}');
+      }
+
+      // Extraer el nombre del archivo de la URL o generar uno
+      String fileName = 'bitacora_evidencia.pdf';
+      try {
+        final uri = Uri.parse(url);
+        final pathSegments = uri.pathSegments;
+        if (pathSegments.isNotEmpty) {
+          final lastSegment = pathSegments.last;
+          if (lastSegment.endsWith('.pdf')) {
+            fileName = lastSegment;
+          } else {
+            // Si no tiene extensión, agregar timestamp
+            final timestamp = DateTime.now().millisecondsSinceEpoch;
+            fileName = 'bitacora_evidencia_$timestamp.pdf';
+          }
+        }
+      } catch (_) {
+        // Si falla, usar nombre por defecto con timestamp
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        fileName = 'bitacora_evidencia_$timestamp.pdf';
+      }
+
+      // Guardar el archivo
+      String? savedPath;
+      
+      if (kIsWeb) {
+        // Para web, usar el helper de descarga
+        savedPath = web_helper.downloadFileWeb(response.bodyBytes, fileName);
+      } else {
+        // Para móvil/desktop, usar FileSaverHelper
+        savedPath = await FileSaverHelper.saveFile(
+          fileBytes: response.bodyBytes,
+          defaultFileName: fileName,
+          dialogTitle: 'Guardar PDF de evidencia',
+        );
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    savedPath != null
+                        ? '✅ PDF descargado: ${savedPath.split('/').last}'
+                        : '✅ PDF descargado exitosamente',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Error al descargar PDF: $e',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
   String _formatDate(DateTime date) {
     return DateFormat('dd/MM/yyyy').format(date);
   }
@@ -2706,7 +3115,7 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
 class _BitacoraFormDialog extends StatefulWidget {
   final BitacoraEnvio? bitacora;
   final DateTime? fechaInicial;
-  final Function(BitacoraEnvio) onSave;
+  final Function(BitacoraEnvio, File?, String?) onSave; // File? = nuevo PDF, String? = URL del PDF a eliminar
 
   const _BitacoraFormDialog({
     this.bitacora,
@@ -2733,6 +3142,13 @@ class _BitacoraFormDialogState extends State<_BitacoraFormDialog> {
   final _anexosController = TextEditingController();
   final _observacionesController = TextEditingController();
   final _coboController = TextEditingController();
+  
+  // Estado para el archivo PDF
+  File? _selectedPdfFile;
+  String? _pdfUrl; // URL del PDF actual (si existe)
+  String? _originalPdfUrl; // URL original del PDF antes de eliminarlo (para poder eliminarlo del storage)
+  bool _shouldDeletePdf = false; // Indica si el PDF debe eliminarse al guardar
+  final StorageService _storageService = StorageService();
 
   @override
   void initState() {
@@ -2752,6 +3168,13 @@ class _BitacoraFormDialogState extends State<_BitacoraFormDialog> {
       _anexosController.text = b.anexos ?? '';
       _observacionesController.text = b.observaciones ?? '';
       _coboController.text = b.cobo ?? '';
+      // Si ya hay una URL de PDF guardada, establecerla
+      if (b.anexos != null && b.anexos!.isNotEmpty && 
+          (b.anexos!.startsWith('http://') || b.anexos!.startsWith('https://'))) {
+        _pdfUrl = b.anexos;
+        _originalPdfUrl = b.anexos; // Guardar la URL original
+      }
+      _shouldDeletePdf = false; // Inicializar el flag de eliminación
     } else {
       // Si hay fecha inicial proporcionada, usarla; si no, usar fecha actual
       _fecha = widget.fechaInicial ?? DateTime.now();
@@ -2790,8 +3213,126 @@ class _BitacoraFormDialogState extends State<_BitacoraFormDialog> {
     }
   }
 
-  void _save() {
+  Future<void> _selectPdfFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+        allowMultiple: false,
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final file = File(result.files.single.path!);
+        
+        // Validar tamaño (50 MB máximo)
+        final fileSize = await file.length();
+        const maxSize = 50 * 1024 * 1024; // 50 MB
+        if (fileSize > maxSize) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('❌ El archivo es demasiado grande. Máximo 50 MB'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+
+        setState(() {
+          _selectedPdfFile = file;
+          _pdfUrl = null; // Limpiar URL anterior si hay un nuevo archivo
+          _shouldDeletePdf = false; // Si hay un nuevo archivo, no eliminar el anterior
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al seleccionar archivo: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Este método ya no se usa, el PDF se sube solo al guardar
+
+  void _removePdfFile() {
+    setState(() {
+      _selectedPdfFile = null;
+      // Si había un PDF guardado, marcarlo para eliminación
+      if (_pdfUrl != null) {
+        _shouldDeletePdf = true;
+        _originalPdfUrl = _pdfUrl; // Guardar la URL original antes de limpiarla
+        _pdfUrl = null; // Limpiar la URL visualmente
+      } else {
+        _shouldDeletePdf = false;
+        _originalPdfUrl = null;
+      }
+      _anexosController.text = '';
+    });
+  }
+
+  Future<void> _handleDroppedFile(File file) async {
+    // Validar que sea PDF
+    final fileName = file.path.split('/').last.toLowerCase();
+    if (!fileName.endsWith('.pdf')) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Solo se permiten archivos PDF'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Validar tamaño (50 MB máximo)
+    try {
+      final fileSize = await file.length();
+      const maxSize = 50 * 1024 * 1024; // 50 MB
+      if (fileSize > maxSize) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ El archivo es demasiado grande. Máximo 50 MB'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      setState(() {
+        // Si había un PDF guardado anteriormente, guardar su URL antes de limpiarla
+        if (_pdfUrl != null && !_shouldDeletePdf) {
+          _originalPdfUrl = _pdfUrl;
+        }
+        _selectedPdfFile = file;
+        _pdfUrl = null; // Limpiar URL anterior si hay un nuevo archivo
+        _shouldDeletePdf = false; // Si hay un nuevo archivo, no eliminar el anterior
+      });
+
+      // El PDF se subirá solo al guardar, no inmediatamente
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al procesar archivo: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _save() async {
     if (_formKey.currentState!.validate()) {
+      // El PDF se subirá/eliminará en el método onSave del padre
+      // Aquí solo preparamos los datos
       final bitacora = BitacoraEnvio(
         idBitacora: widget.bitacora?.idBitacora,
         consecutivo: widget.bitacora?.consecutivo ?? '1',
@@ -2804,7 +3345,7 @@ class _BitacoraFormDialogState extends State<_BitacoraFormDialog> {
         envia: _enviaController.text.trim().isEmpty ? null : _enviaController.text.trim(),
         recibe: _recibeController.text.trim().isEmpty ? null : _recibeController.text.trim(),
         guia: _guiaController.text.trim().isEmpty ? null : _guiaController.text.trim(),
-        anexos: _anexosController.text.trim().isEmpty ? null : _anexosController.text.trim(),
+        anexos: _pdfUrl ?? (_anexosController.text.trim().isEmpty ? null : _anexosController.text.trim()),
         observaciones: _observacionesController.text.trim().isEmpty ? null : _observacionesController.text.trim(),
         cobo: _coboController.text.trim().isEmpty ? null : _coboController.text.trim(),
         estado: _estado,
@@ -2814,7 +3355,9 @@ class _BitacoraFormDialogState extends State<_BitacoraFormDialog> {
         actualizadoPor: widget.bitacora?.actualizadoPor,
       );
 
-      widget.onSave(bitacora);
+      // Pasar el archivo PDF y la URL del PDF a eliminar (si se marcó para eliminar)
+      widget.onSave(bitacora, _selectedPdfFile, _shouldDeletePdf ? _originalPdfUrl : null);
+      
       Navigator.pop(context);
     }
   }
@@ -2949,19 +3492,8 @@ class _BitacoraFormDialogState extends State<_BitacoraFormDialog> {
                 ),
               ),
               const SizedBox(height: 12),
-              // Anexos
-              TextFormField(
-                controller: _anexosController,
-                decoration: InputDecoration(
-                  labelText: 'Anexos',
-                  hintText: 'Ingrese archivos adjuntos o referencias adicionales',
-                  hintStyle: TextStyle(
-                    fontStyle: FontStyle.italic,
-                    color: Colors.grey[500],
-                  ),
-                  border: const OutlineInputBorder(),
-                ),
-              ),
+              // Anexos - Subida de PDF
+              _buildPdfUploadWidget(),
               const SizedBox(height: 12),
               // Observaciones
               TextFormField(
@@ -3062,6 +3594,148 @@ class _BitacoraFormDialogState extends State<_BitacoraFormDialog> {
         ElevatedButton(
           onPressed: _save,
           child: const Text('Guardar'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPdfUploadWidget() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Evidencia PDF',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Widget de seleccionar archivo
+        GestureDetector(
+          onTap: _selectPdfFile,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: _selectedPdfFile != null || _pdfUrl != null
+                    ? Colors.green
+                    : Colors.grey,
+                width: 2,
+                style: BorderStyle.solid,
+              ),
+              borderRadius: BorderRadius.circular(8),
+              color: _selectedPdfFile != null || _pdfUrl != null
+                  ? Colors.green.shade50
+                  : Colors.grey.shade50,
+            ),
+            child: _selectedPdfFile != null || _pdfUrl != null
+                    ? Column(
+                        children: [
+                          Icon(
+                            Icons.picture_as_pdf,
+                            size: 48,
+                            color: Colors.red,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _selectedPdfFile != null
+                                ? _selectedPdfFile!.path.split('/').last
+                                : 'PDF cargado',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          if (_shouldDeletePdf && _pdfUrl == null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              '🗑️ Se eliminará al guardar',
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ] else if (_pdfUrl != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              '✅ Archivo guardado',
+                              style: TextStyle(
+                                color: Colors.green,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ] else if (_selectedPdfFile != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              '📤 Se subirá al guardar',
+                              style: TextStyle(
+                                color: Colors.orange,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              TextButton.icon(
+                                onPressed: _selectPdfFile,
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Cambiar PDF'),
+                              ),
+                              const SizedBox(width: 8),
+                              TextButton.icon(
+                                onPressed: _removePdfFile,
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                label: const Text(
+                                  'Eliminar',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      )
+                    : Column(
+                        children: [
+                          Icon(
+                            Icons.cloud_upload_outlined,
+                            size: 48,
+                            color: Colors.grey[600],
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Arrastra un PDF aquí o toca para seleccionar',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Solo archivos PDF (máx. 50 MB)',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+          ),
+        ),
+        // Campo oculto para guardar la URL
+        if (_pdfUrl != null)
+          TextFormField(
+            controller: _anexosController,
+            enabled: false,
+            decoration: const InputDecoration(
+              labelText: 'URL del archivo (guardada automáticamente)',
+              border: InputBorder.none,
+            ),
+            style: const TextStyle(fontSize: 0), // Ocultar visualmente
         ),
       ],
     );

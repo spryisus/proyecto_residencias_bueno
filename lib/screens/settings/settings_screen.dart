@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../widgets/animated_card.dart';
 import '../../widgets/modern_button.dart';
+import '../auth/login_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -96,14 +98,42 @@ class SettingsScreen extends StatelessWidget {
           ModernButton(
             text: 'Cerrar Sesión',
             backgroundColor: Theme.of(context).colorScheme.error,
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              // TODO: Implementar lógica de logout
+              await _logout(context);
             },
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _logout(BuildContext context) async {
+    try {
+      // Limpiar SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('id_empleado');
+      await prefs.remove('nombre_usuario');
+      await prefs.setBool('is_logged_in', false);
+      
+      // Navegar al login y limpiar el stack de navegación
+      if (context.mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cerrar sesión: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
 

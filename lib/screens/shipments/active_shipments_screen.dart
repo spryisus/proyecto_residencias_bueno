@@ -222,31 +222,6 @@ class _ActiveShipmentsScreenState extends State<ActiveShipmentsScreen> {
         backgroundColor: const Color(0xFF003366),
         foregroundColor: Colors.white,
         actions: [
-          // Filtro de estado
-          PopupMenuButton<EstadoEnvio?>(
-            icon: const Icon(Icons.filter_list),
-            onSelected: (EstadoEnvio? estado) {
-              setState(() {
-                _filtroEstado = estado;
-              });
-              _loadEnviosActivos();
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: null,
-                child: Text('Todos los activos'),
-              ),
-              const PopupMenuDivider(),
-              const PopupMenuItem(
-                value: EstadoEnvio.enviado,
-                child: Text('Enviado'),
-              ),
-              const PopupMenuItem(
-                value: EstadoEnvio.enTransito,
-                child: Text('En Tránsito'),
-              ),
-            ],
-          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadEnviosActivos,

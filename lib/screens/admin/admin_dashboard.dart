@@ -81,8 +81,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
             userRole = 'Administrador';
           } else if (roleName == 'operador') {
             userRole = 'Operador';
-          } else if (roleName == 'auditor') {
-            userRole = 'Auditor';
           }
         }
       }
@@ -252,8 +250,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   Widget _buildHeader(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 600;
+    final topPadding = MediaQuery.of(context).padding.top;
     return Container(
-      height: isMobile ? 70 : 70,
+      padding: EdgeInsets.only(top: topPadding),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
@@ -264,43 +263,43 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
         ],
       ),
-      padding: EdgeInsets.only(
-        top: isMobile ? MediaQuery.of(context).padding.top + 8 : 12,
-        bottom: 12,
-        left: isMobile ? 12 : 24,
-        right: isMobile ? 12 : 24,
-      ),
-      child: Row(
-        children: [
-          // Logo y título
-          Expanded(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: MediaQuery.of(context).size.width < 600 ? 32 : 40,
-                  height: MediaQuery.of(context).size.width < 600 ? 32 : 40,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF003366),
-                    borderRadius: BorderRadius.circular(8),
+      child: Container(
+        height: isMobile ? 60 : 70,
+        padding: EdgeInsets.symmetric(
+          horizontal: isMobile ? 12 : 24,
+          vertical: isMobile ? 8 : 12,
+        ),
+        child: Row(
+          children: [
+            // Logo y título
+            Expanded(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: MediaQuery.of(context).size.width < 600 ? 32 : 40,
+                    height: MediaQuery.of(context).size.width < 600 ? 32 : 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF003366),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.inventory_2,
+                      color: Colors.white,
+                      size: MediaQuery.of(context).size.width < 600 ? 20 : 24,
+                    ),
                   ),
-                  child: Icon(
-                    Icons.inventory_2,
-                    color: Colors.white,
-                    size: MediaQuery.of(context).size.width < 600 ? 20 : 24,
-                  ),
-                ),
-                SizedBox(width: MediaQuery.of(context).size.width < 600 ? 8 : 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
+                  SizedBox(width: MediaQuery.of(context).size.width < 600 ? 8 : 12),
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                       Text(
                         'Gestor de Refacciones y Envios',
                         style: TextStyle(
-                          fontSize: MediaQuery.of(context).size.width < 600 ? 14 : 18,
+                          fontSize: MediaQuery.of(context).size.width < 600 ? 16 : 22,
                           fontWeight: FontWeight.bold,
                           color: const Color(0xFF003366),
                         ),
@@ -308,21 +307,24 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       if (MediaQuery.of(context).size.width >= 600)
-                        Text(
-                          'Sistema de Larga Distancia',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            'Sistema de Larga Distancia',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
           if (MediaQuery.of(context).size.width >= 600) const Spacer(),
           // Botón de menú hamburguesa (solo móvil)
           if (MediaQuery.of(context).size.width < 600)
@@ -381,7 +383,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       Text(
                         _userName ?? 'Usuario',
                         style: const TextStyle(
-                          fontSize: 14,
+                          fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
                         maxLines: 1,
@@ -390,7 +392,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       Text(
                         _userRole ?? 'Usuario',
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 14,
                           color: Colors.grey[600],
                         ),
                         maxLines: 1,
@@ -415,6 +417,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
               ),
             ),
         ],
+      ),
       ),
     );
   }
@@ -777,7 +780,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       title: Text(
         title,
         style: TextStyle(
-          fontSize: 14,
+          fontSize: 16,
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
           color: isSelected ? const Color(0xFF003366) : Colors.grey[800],
         ),
@@ -788,7 +791,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ? Text(
               subtitle,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 13,
                 color: Colors.grey[600],
               ),
               maxLines: 1,
@@ -806,7 +809,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 badge,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 11,
+                  fontSize: 13,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -827,7 +830,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           child: Text(
             title,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 14,
               fontWeight: FontWeight.w600,
               color: Colors.grey[600],
               letterSpacing: 1.2,
@@ -880,7 +883,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   Text(
                     title,
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 16,
                       fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                       color: isSelected ? const Color(0xFF003366) : Colors.grey[800],
                     ),
@@ -892,7 +895,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     Text(
                       subtitle,
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 13,
                         color: Colors.grey[600],
                       ),
                     ),
@@ -911,7 +914,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   badge,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 11,
+                    fontSize: 13,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -944,26 +947,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Mensaje de bienvenida
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Bienvenido 👋',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Panel de administración - Sistema de Larga Distancia',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
+              Text(
+                'Bienvenido 👋',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 32,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Panel de administración - Sistema de Larga Distancia',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.grey[600],
+                  fontSize: 16,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
@@ -982,18 +984,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   children: [
                     Expanded(
                       flex: 1,
-                      child: Column(
-                        children: [
-                          _buildEnhancedClockWidget(),
-                          const SizedBox(height: 16),
-                          RutinasWidget(
-                            onRutinasChanged: (rutinas) {
-                              setState(() {
-                                _rutinas = rutinas;
-                              });
-                            },
-                          ),
-                        ],
+                      child: RutinasWidget(
+                        onRutinasChanged: (rutinas) {
+                          setState(() {
+                            _rutinas = rutinas;
+                          });
+                        },
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -1015,8 +1011,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
               } else {
                 return Column(
                   children: [
-                    _buildEnhancedClockWidget(),
-                    const SizedBox(height: 16),
                     RutinasWidget(
                       onRutinasChanged: (rutinas) {
                         setState(() {
@@ -1061,7 +1055,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           crossAxisCount: crossAxisCount,
           crossAxisSpacing: isMobile ? 8 : 16,
           mainAxisSpacing: isMobile ? 8 : 16,
-          childAspectRatio: isMobile ? 0.95 : 1.2,
+          childAspectRatio: isMobile ? 1.0 : 1.3,
           padding: EdgeInsets.all(isMobile ? 8 : 16),
           children: [
             _buildStatCard(
@@ -1161,154 +1155,86 @@ class _AdminDashboardState extends State<AdminDashboard> {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
+        child: ClipRect(
           child: Padding(
-          padding: EdgeInsets.all(isMobile ? 10 : 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: EdgeInsets.all(isMobile ? 6 : 14),
-                    decoration: BoxDecoration(
-                      color: iconColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(icon, color: iconColor, size: isMobile ? 24 : 48),
-                  ),
-                  if (badge != null)
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 10 : 20,
+              vertical: isMobile ? 12 : 16,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
                     Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isMobile ? 5 : 8,
-                        vertical: isMobile ? 2 : 4,
-                      ),
+                      padding: EdgeInsets.all(isMobile ? 8 : 16),
                       decoration: BoxDecoration(
-                        color: badgeColor,
+                        color: iconColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Text(
-                        badge,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: isMobile ? 8 : 11,
-                          fontWeight: FontWeight.bold,
+                      child: Icon(icon, color: iconColor, size: isMobile ? 32 : 56),
+                    ),
+                    if (badge != null)
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isMobile ? 6 : 10,
+                          vertical: isMobile ? 3 : 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: badgeColor,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          badge,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: isMobile ? 10 : 13,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                    ),
-                ],
-              ),
-              SizedBox(height: isMobile ? 6 : 12),
-              Text(
-                value,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  fontSize: isMobile ? 18 : null,
+                  ],
                 ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
-              SizedBox(height: isMobile ? 2 : 4),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey[600],
-                  fontSize: isMobile ? 10 : null,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(height: isMobile ? 4 : 8),
+                      Text(
+                        value,
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          fontSize: isMobile ? 28 : 36,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                      SizedBox(height: isMobile ? 2 : 4),
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.grey[600],
+                          fontSize: isMobile ? 14 : 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 2,
+                      ),
+                    ],
+                  ),
                 ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 2,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildEnhancedClockWidget() {
-    return Card(
-      elevation: 2,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: const Color(0xFF003366),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.access_time, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                const Text(
-                  'HORA ACTUAL',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            StreamBuilder<DateTime>(
-              stream: Stream.periodic(const Duration(seconds: 1), (_) => DateTime.now()),
-              builder: (context, snapshot) {
-                final now = snapshot.data ?? DateTime.now();
-                final timeFormat = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-                return Text(
-                  timeFormat,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 8),
-            StreamBuilder<DateTime>(
-              stream: Stream.periodic(const Duration(seconds: 1), (_) => DateTime.now()),
-              builder: (context, snapshot) {
-                final now = snapshot.data ?? DateTime.now();
-                final dateFormat = '${_getDayName(now.weekday)}, ${now.day} ${_getMonthName(now.month)} ${now.year}';
-                return Text(
-                  dateFormat,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Ciudad de México, México',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _getDayName(int weekday) {
-    const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-    return days[weekday - 1];
-  }
-
-  String _getMonthName(int month) {
-    const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
-                    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-    return months[month - 1];
-  }
 
 }
 

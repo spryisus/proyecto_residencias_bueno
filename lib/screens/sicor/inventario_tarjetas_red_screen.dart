@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../app/config/supabase_client.dart' show supabaseClient;
 import '../../data/services/sicor_export_service.dart';
@@ -720,11 +721,12 @@ class _InventarioTarjetasRedScreenState extends State<InventarioTarjetasRedScree
                   ),
                 ),
               ),
-            IconButton(
-              icon: const Icon(Icons.qr_code_scanner),
-              tooltip: 'Escanear código QR',
-              onPressed: _abrirEscannerQR,
-            ),
+            if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS))
+              IconButton(
+                icon: const Icon(Icons.qr_code_scanner),
+                tooltip: 'Escanear código QR',
+                onPressed: _abrirEscannerQR,
+              ),
             if (_tarjetas.isNotEmpty || (_modoInventario && _tarjetasCompletadas.isNotEmpty))
               IconButton(
                 icon: const Icon(Icons.file_download),

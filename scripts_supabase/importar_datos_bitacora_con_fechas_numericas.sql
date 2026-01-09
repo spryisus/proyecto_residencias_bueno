@@ -54,3 +54,5 @@ WHERE fecha::TEXT ~ '^\d{6}$'; -- Solo actualizar fechas de 6 dígitos
 
 
 
+
+

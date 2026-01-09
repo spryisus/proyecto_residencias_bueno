@@ -166,3 +166,5 @@ cd scripts_supabase
 - **Verificar backups:** Prueba restaurar un backup de prueba ocasionalmente
 
 
+
+

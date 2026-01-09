@@ -247,3 +247,5 @@ crontab -e
 - Comprime el backup después con `gzip`
 
 
+
+
