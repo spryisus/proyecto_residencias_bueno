@@ -21,13 +21,14 @@ class ComputoExportService {
         throw Exception('No hay datos para exportar');
       }
 
-      // Preparar los datos para el endpoint según la plantilla (14 columnas, incluyendo COMPONENTES)
-      // 1: ID, 2: TIPO DE EQUIPO, 3: MARCA, 4: MODELO, 5: PROCESADOR,
-      // 6: NUMERO DE SERIE, 7: DISCO DURO, 8: MEMORIA, 9: SISTEMA OPERATIVO INSTALADO,
-      // 10: OFFICE INSTALADO, 11: USUARIO ASIGNADO, 12: UBICACIÓN, 13: OBSERVACIONES, 14: COMPONENTES
+      // Preparar los datos para el endpoint según la plantilla
+      // Los items ya vienen con todos los campos necesarios (equipo principal + accesorios)
       final payload = {
         'items': items.map((item) => {
+          'id': item['id'],
           'inventario': item['inventario'] ?? '',
+          'equipo_pm': item['equipo_pm'] ?? '',
+          'fecha_registro': item['fecha_registro'] ?? '',
           'tipo_equipo': item['tipo_equipo'] ?? '',
           'marca': item['marca'] ?? '',
           'modelo': item['modelo'] ?? '',
@@ -36,11 +37,36 @@ class ComputoExportService {
           'disco_duro': item['disco_duro'] ?? '',
           'memoria': item['memoria'] ?? '',
           'sistema_operativo_instalado': item['sistema_operativo_instalado'] ?? item['sistema_operativo'] ?? '',
+          'etiqueta_sistema_operativo': item['etiqueta_sistema_operativo'] ?? '',
           'office_instalado': item['office_instalado'] ?? '',
-          'empleado_asignado': item['empleado_asignado_nombre'] ?? item['empleado_asignado'] ?? '',
           'direccion_fisica': item['direccion_fisica'] ?? item['ubicacion_fisica'] ?? '',
+          'estado': item['estado'] ?? '',
+          'ciudad': item['ciudad'] ?? '',
+          'tipo_edificio': item['tipo_edificio'] ?? '',
+          'nombre_edificio': item['nombre_edificio'] ?? '',
+          'tipo_uso': item['tipo_uso'] ?? '',
+          'nombre_equipo_dominio': item['nombre_equipo_dominio'] ?? '',
+          'status': item['status'] ?? '',
+          'direccion_administrativa': item['direccion_administrativa'] ?? '',
+          'subdireccion': item['subdireccion'] ?? '',
+          'gerencia': item['gerencia'] ?? '',
+          // Usuario Final
+          'expediente_final': item['expediente_final'] ?? '',
+          'nombre_completo_final': item['nombre_completo_final'] ?? '',
+          'apellido_paterno_final': item['apellido_paterno_final'] ?? '',
+          'apellido_materno_final': item['apellido_materno_final'] ?? '',
+          'nombre_final': item['nombre_final'] ?? '',
+          'empresa_final': item['empresa_final'] ?? '',
+          'puesto_final': item['puesto_final'] ?? '',
+          // Usuario Responsable
+          'expediente_responsable': item['expediente_responsable'] ?? '',
+          'nombre_completo_responsable': item['nombre_completo_responsable'] ?? '',
+          'apellido_paterno_responsable': item['apellido_paterno_responsable'] ?? '',
+          'apellido_materno_responsable': item['apellido_materno_responsable'] ?? '',
+          'nombre_responsable': item['nombre_responsable'] ?? '',
+          'empresa_responsable': item['empresa_responsable'] ?? '',
+          'puesto_responsable': item['puesto_responsable'] ?? '',
           'observaciones': item['observaciones'] ?? '',
-          'componentes': item['componentes'] ?? '',
         }).toList(),
       };
 

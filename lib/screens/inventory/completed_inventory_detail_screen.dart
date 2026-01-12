@@ -1004,32 +1004,109 @@ class _CompletedInventoryDetailScreenState extends State<CompletedInventoryDetai
             );
           }
 
-          // Preparar datos para exportación según plantilla (14 columnas, incluyendo COMPONENTES)
-          final itemsToExport = _computoEquipos.map((equipo) {
-            // Formatear componentes: solo el tipo (MONITOR, TECLADO, MOUSE, etc.)
-            final componentes = equipo['t_componentes_computo'] as List<dynamic>? ?? [];
-            final componentesTexto = componentes
-                .map((comp) => (comp['tipo_componente'] ?? '').toString().trim().toUpperCase())
-                .where((tipo) => tipo.isNotEmpty)
-                .join('; ');
+          // Preparar datos para exportación: equipo principal + accesorios como filas separadas con TODOS los campos
+          final itemsToExport = <Map<String, dynamic>>[];
+          
+          for (var equipo in _computoEquipos) {
+            final idEquipoComputo = equipo['id_equipo_computo'];
+            final equipoPm = equipo['equipo_pm']?.toString() ?? '';
+            final inventarioPrincipal = equipo['inventario']?.toString() ?? '';
             
-            return {
-              'inventario': equipo['inventario'] ?? '',
-              'tipo_equipo': equipo['tipo_equipo'] ?? '',
-              'marca': equipo['marca'] ?? '',
-              'modelo': equipo['modelo'] ?? '',
-              'procesador': equipo['procesador'] ?? '',
-              'numero_serie': equipo['numero_serie'] ?? '',
-              'disco_duro': equipo['disco_duro'] ?? '',
-              'memoria': equipo['memoria'] ?? '',
-              'sistema_operativo_instalado': equipo['sistema_operativo_instalado'] ?? equipo['sistema_operativo'] ?? '',
-              'office_instalado': equipo['office_instalado'] ?? '',
-              'empleado_asignado': equipo['empleado_asignado_nombre'] ?? equipo['empleado_asignado'] ?? '',
-              'direccion_fisica': equipo['direccion_fisica'] ?? equipo['ubicacion_fisica'] ?? '',
-              'observaciones': equipo['observaciones'] ?? '',
-              'componentes': componentesTexto,
-            };
-          }).toList();
+            // 1. Agregar el equipo principal como primera fila con TODOS los campos
+            itemsToExport.add({
+              'id': idEquipoComputo,
+              'inventario': inventarioPrincipal,
+              'equipo_pm': equipoPm,
+              'fecha_registro': equipo['fecha_registro']?.toString() ?? '',
+              'tipo_equipo': equipo['tipo_equipo']?.toString() ?? '',
+              'marca': equipo['marca']?.toString() ?? '',
+              'modelo': equipo['modelo']?.toString() ?? '',
+              'procesador': equipo['procesador']?.toString() ?? '',
+              'numero_serie': equipo['numero_serie']?.toString() ?? '',
+              'disco_duro': equipo['disco_duro']?.toString() ?? '',
+              'memoria': equipo['memoria_ram']?.toString() ?? equipo['memoria']?.toString() ?? '',
+              'sistema_operativo_instalado': equipo['sistema_operativo_instalado']?.toString() ?? equipo['sistema_operativo']?.toString() ?? '',
+              'etiqueta_sistema_operativo': equipo['etiqueta_sistema_operativo']?.toString() ?? '',
+              'office_instalado': equipo['office_instalado']?.toString() ?? '',
+              'direccion_fisica': equipo['direccion_fisica']?.toString() ?? equipo['ubicacion_fisica']?.toString() ?? '',
+              'estado': equipo['estado_ubicacion']?.toString() ?? '',
+              'ciudad': equipo['ciudad']?.toString() ?? '',
+              'tipo_edificio': equipo['tipo_edificio']?.toString() ?? '',
+              'nombre_edificio': equipo['nombre_edificio']?.toString() ?? '',
+              'tipo_uso': equipo['tipo_uso']?.toString() ?? '',
+              'nombre_equipo_dominio': equipo['nombre_equipo_dominio']?.toString() ?? '',
+              'status': equipo['status']?.toString() ?? '',
+              'direccion_administrativa': equipo['direccion_administrativa']?.toString() ?? '',
+              'subdireccion': equipo['subdireccion']?.toString() ?? '',
+              'gerencia': equipo['gerencia']?.toString() ?? '',
+              // Usuario Final
+              'expediente_final': equipo['expediente_final']?.toString() ?? '',
+              'nombre_completo_final': equipo['empleado_asignado_nombre']?.toString() ?? '',
+              'apellido_paterno_final': equipo['apellido_paterno_final']?.toString() ?? '',
+              'apellido_materno_final': equipo['apellido_materno_final']?.toString() ?? '',
+              'nombre_final': equipo['nombre_final']?.toString() ?? '',
+              'empresa_final': equipo['empresa_final']?.toString() ?? '',
+              'puesto_final': equipo['puesto_final']?.toString() ?? '',
+              // Usuario Responsable
+              'expediente_responsable': equipo['expediente_responsable']?.toString() ?? '',
+              'nombre_completo_responsable': '${equipo['nombre_responsable'] ?? ''} ${equipo['apellido_paterno_responsable'] ?? ''} ${equipo['apellido_materno_responsable'] ?? ''}'.trim(),
+              'apellido_paterno_responsable': equipo['apellido_paterno_responsable']?.toString() ?? '',
+              'apellido_materno_responsable': equipo['apellido_materno_responsable']?.toString() ?? '',
+              'nombre_responsable': equipo['nombre_responsable']?.toString() ?? '',
+              'empresa_responsable': equipo['empresa_responsable']?.toString() ?? '',
+              'puesto_responsable': equipo['puesto_responsable']?.toString() ?? '',
+              'observaciones': equipo['observaciones']?.toString() ?? '',
+            });
+            
+            // 2. Agregar cada accesorio como una fila separada con el mismo ID y EQUIPO PM
+            final accesorios = equipo['t_componentes_computo'] as List<dynamic>? ?? [];
+            for (var accesorio in accesorios) {
+              itemsToExport.add({
+                'id': idEquipoComputo, // Mismo ID que el equipo principal
+                'inventario': accesorio['inventario']?.toString() ?? 'S/N',
+                'equipo_pm': equipoPm, // Mismo EQUIPO PM
+                'fecha_registro': accesorio['fecha_registro']?.toString() ?? equipo['fecha_registro']?.toString() ?? '',
+                'tipo_equipo': accesorio['tipo_componente']?.toString().toUpperCase() ?? accesorio['tipo_equipo']?.toString().toUpperCase() ?? '',
+                'marca': accesorio['marca']?.toString() ?? '',
+                'modelo': accesorio['modelo']?.toString() ?? '',
+                'procesador': '', // Los accesorios no tienen procesador
+                'numero_serie': accesorio['numero_serie']?.toString() ?? '',
+                'disco_duro': '', // Los accesorios no tienen disco duro
+                'memoria': '', // Los accesorios no tienen memoria
+                'sistema_operativo_instalado': '', // Los accesorios no tienen SO
+                'etiqueta_sistema_operativo': '', // Los accesorios no tienen etiqueta SO
+                'office_instalado': '', // Los accesorios no tienen Office
+                'direccion_fisica': equipo['direccion_fisica']?.toString() ?? equipo['ubicacion_fisica']?.toString() ?? '',
+                'estado': equipo['estado_ubicacion']?.toString() ?? '',
+                'ciudad': equipo['ciudad']?.toString() ?? '',
+                'tipo_edificio': equipo['tipo_edificio']?.toString() ?? '',
+                'nombre_edificio': equipo['nombre_edificio']?.toString() ?? '',
+                'tipo_uso': equipo['tipo_uso']?.toString() ?? '',
+                'nombre_equipo_dominio': equipo['nombre_equipo_dominio']?.toString() ?? '',
+                'status': equipo['status']?.toString() ?? '',
+                'direccion_administrativa': equipo['direccion_administrativa']?.toString() ?? '',
+                'subdireccion': equipo['subdireccion']?.toString() ?? '',
+                'gerencia': equipo['gerencia']?.toString() ?? '',
+                // Usuario Final (mismo que el equipo principal)
+                'expediente_final': equipo['expediente_final']?.toString() ?? '',
+                'nombre_completo_final': equipo['empleado_asignado_nombre']?.toString() ?? '',
+                'apellido_paterno_final': equipo['apellido_paterno_final']?.toString() ?? '',
+                'apellido_materno_final': equipo['apellido_materno_final']?.toString() ?? '',
+                'nombre_final': equipo['nombre_final']?.toString() ?? '',
+                'empresa_final': equipo['empresa_final']?.toString() ?? '',
+                'puesto_final': equipo['puesto_final']?.toString() ?? '',
+                // Usuario Responsable (mismo que el equipo principal)
+                'expediente_responsable': equipo['expediente_responsable']?.toString() ?? '',
+                'nombre_completo_responsable': '${equipo['nombre_responsable'] ?? ''} ${equipo['apellido_paterno_responsable'] ?? ''} ${equipo['apellido_materno_responsable'] ?? ''}'.trim(),
+                'apellido_paterno_responsable': equipo['apellido_paterno_responsable']?.toString() ?? '',
+                'apellido_materno_responsable': equipo['apellido_materno_responsable']?.toString() ?? '',
+                'nombre_responsable': equipo['nombre_responsable']?.toString() ?? '',
+                'empresa_responsable': equipo['empresa_responsable']?.toString() ?? '',
+                'puesto_responsable': equipo['puesto_responsable']?.toString() ?? '',
+                'observaciones': accesorio['observaciones']?.toString() ?? '',
+              });
+            }
+          }
 
           final filePath = await ComputoExportService.exportComputoToExcel(itemsToExport);
 

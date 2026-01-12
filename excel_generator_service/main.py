@@ -103,30 +103,46 @@ def _safe_set_cell_value(ws, row: int, col: int, value: Any):
     """Escribe un valor en una celda de forma segura, evitando celdas combinadas"""
     try:
         cell = ws.cell(row=row, column=col)
-        cell_coordinate = cell.coordinate
         
         # Verificar si la celda está en un rango combinado
-        # openpyxl usa merged_cells que es un objeto MultiCellRange
+        # Si la celda es parte de un merge, solo escribir en la celda principal (top-left)
+        import re
         for merged_range in list(ws.merged_cells.ranges):
-            # Convertir el rango a string para comparar
             range_str = str(merged_range)
-            # Verificar si nuestra celda está en este rango
-            if cell_coordinate in range_str or _is_cell_in_range(cell_coordinate, merged_range):
-                # Si está en un merge, obtener la celda principal (top-left del rango)
-                # El rango tiene formato como "A1:B2", la primera celda es la principal
+            # El rango tiene formato como "A1:B2"
+            if ':' in range_str:
                 range_parts = range_str.split(':')
-                if range_parts:
+                if len(range_parts) >= 2:
                     top_left = range_parts[0]  # Ej: "A1"
-                    # Convertir coordenada de letra a número (ej: "A1" -> row=1, col=1)
-                    from openpyxl.utils import coordinate_from_string, column_index_from_string
-                    coord_tuple = coordinate_from_string(top_left)
-                    top_row = coord_tuple[1]
-                    top_col = column_index_from_string(coord_tuple[0])
-                    # Solo escribir si estamos en la celda principal
-                    if row == top_row and col == top_col:
-                        cell.value = value
-                    # Si no, no escribir nada (la celda está en el merge pero no es la principal)
-                    return
+                    bottom_right = range_parts[1]  # Ej: "B2"
+                    
+                    # Extraer fila y columna de la celda principal (top-left)
+                    match_top = re.match(r'([A-Z]+)(\d+)', top_left)
+                    match_bottom = re.match(r'([A-Z]+)(\d+)', bottom_right)
+                    
+                    if match_top and match_bottom:
+                        top_col_letter = match_top.group(1)
+                        top_row_num = int(match_top.group(2))
+                        bottom_col_letter = match_bottom.group(1)
+                        bottom_row_num = int(match_bottom.group(2))
+                        
+                        # Convertir letra de columna a número (A=1, B=2, etc.)
+                        top_col_num = 0
+                        for char in top_col_letter:
+                            top_col_num = top_col_num * 26 + (ord(char) - ord('A') + 1)
+                        
+                        bottom_col_num = 0
+                        for char in bottom_col_letter:
+                            bottom_col_num = bottom_col_num * 26 + (ord(char) - ord('A') + 1)
+                        
+                        # Verificar si estamos dentro del rango fusionado
+                        if (top_row_num <= row <= bottom_row_num and 
+                            top_col_num <= col <= bottom_col_num):
+                            # Solo escribir si es la celda principal (top-left)
+                            if row == top_row_num and col == top_col_num:
+                                cell.value = value
+                            # Si no es la principal, no escribir (es parte del merge)
+                            return
         
         # Si no está en un merge, escribir normalmente
         cell.value = value
@@ -136,21 +152,11 @@ def _safe_set_cell_value(ws, row: int, col: int, value: Any):
         try:
             ws.cell(row=row, column=col).value = value
         except Exception as e2:
-            logger.error(f"Error crítico al escribir en celda ({row}, {col}): {e2}")
+            # Si es un error de celda fusionada, ignorarlo silenciosamente
+            if "read-only" not in str(e2).lower() and "merged" not in str(e2).lower():
+                logger.error(f"Error crítico al escribir en celda ({row}, {col}): {e2}")
 
 
-def _is_cell_in_range(cell_coordinate: str, merged_range) -> bool:
-    """Verifica si una celda está dentro de un rango combinado"""
-    try:
-        from openpyxl.utils import range_boundaries
-        min_col, min_row, max_col, max_row = range_boundaries(str(merged_range))
-        from openpyxl.utils import coordinate_from_string, column_index_from_string
-        coord_tuple = coordinate_from_string(cell_coordinate)
-        cell_row = coord_tuple[1]
-        cell_col = column_index_from_string(coord_tuple[0])
-        return min_row <= cell_row <= max_row and min_col <= cell_col <= max_col
-    except:
-        return False
 
 
 def _save_workbook_to_bytes(wb: Workbook) -> bytes:
@@ -629,24 +635,20 @@ async def generate_computo_excel(request: Request):
             wb = openpyxl.load_workbook(TEMPLATE_PATH_COMPUTO)
             ws = wb.active
             
-            # La inserción empieza en la fila 7
-            start_row = 7
+            # La inserción empieza en la fila 5 (celda A5)
+            start_row = 5
             
-            # Buscar la primera fila vacía desde la fila 7
+            # Buscar la primera fila vacía desde la fila 5
             while ws.cell(row=start_row, column=1).value is not None:
                 start_row += 1
             
-            logger.info(f"📝 Escribiendo {len(items)} equipos desde la fila {start_row}")
+            logger.info(f"📝 Escribiendo {len(items)} equipos desde la fila {start_row} (celda A{start_row})")
             
-            # Obtener el formato de la fila 7 (fila de referencia)
-            # La plantilla tiene 14 columnas según los encabezados:
-            # 1: ID, 2: TIPO DE EQUIPO, 3: MARCA, 4: MODELO, 5: PROCESADOR,
-            # 6: NUMERO DE SERIE, 7: DISCO DURO, 8: MEMORIA, 9: COMPONENTES,
-            # 10: SISTEMA OPERATIVO INSTALADO, 11: OFFICE INSTALADO, 12: USUARIO ASIGNADO,
-            # 13: UBICACIÓN, 14: OBSERVACIONES
-            reference_row = 7
+            # Obtener el formato de la fila 5 (fila de referencia)
+            # La plantilla tiene 40 columnas según los encabezados
+            reference_row = 5
             reference_cells = {}
-            for col in range(1, 15):  # Columnas A-N (14 columnas)
+            for col in range(1, 41):  # Columnas A-AN (40 columnas)
                 ref_cell = ws.cell(row=reference_row, column=col)
                 reference_cells[col] = {
                     'font': ref_cell.font.copy() if ref_cell.font else None,
@@ -656,43 +658,94 @@ async def generate_computo_excel(request: Request):
                     'number_format': ref_cell.number_format,
                 }
             
-            # Escribir cada equipo en una fila usando función segura y copiando formato
+            # Escribir cada equipo/accesorio en una fila usando función segura y copiando formato
             for idx, item in enumerate(items, start=0):
                 row = start_row + idx
                 
-                # Mapear campos según la plantilla (14 columnas en el orden correcto)
-                # Col 1: ID -> inventario
-                _safe_set_cell_value(ws, row, 1, item.get("inventario", ""))
-                # Col 2: TIPO DE EQUIPO -> tipo_equipo
-                _safe_set_cell_value(ws, row, 2, item.get("tipo_equipo", ""))
-                # Col 3: MARCA -> marca
-                _safe_set_cell_value(ws, row, 3, item.get("marca", ""))
-                # Col 4: MODELO -> modelo
-                _safe_set_cell_value(ws, row, 4, item.get("modelo", ""))
-                # Col 5: PROCESADOR -> procesador
-                _safe_set_cell_value(ws, row, 5, item.get("procesador", ""))
-                # Col 6: NUMERO DE SERIE -> numero_serie
-                _safe_set_cell_value(ws, row, 6, item.get("numero_serie", ""))
-                # Col 7: DISCO DURO -> disco_duro
-                _safe_set_cell_value(ws, row, 7, item.get("disco_duro", ""))
-                # Col 8: MEMORIA -> memoria
-                _safe_set_cell_value(ws, row, 8, item.get("memoria", ""))
-                # Col 9: COMPONENTES -> componentes (formateados)
-                _safe_set_cell_value(ws, row, 9, item.get("componentes", ""))
-                # Col 10: SISTEMA OPERATIVO INSTALADO -> sistema_operativo_instalado
-                _safe_set_cell_value(ws, row, 10, item.get("sistema_operativo_instalado", item.get("sistema_operativo", "")))
-                # Col 11: OFFICE INSTALADO -> office_instalado
-                _safe_set_cell_value(ws, row, 11, item.get("office_instalado", ""))
-                # Col 12: USUARIO ASIGNADO -> empleado_asignado (nombre)
-                _safe_set_cell_value(ws, row, 12, item.get("empleado_asignado", ""))
-                # Col 13: UBICACIÓN -> direccion_fisica o ubicacion_fisica
-                ubicacion = item.get("direccion_fisica", item.get("ubicacion_fisica", ""))
-                _safe_set_cell_value(ws, row, 13, ubicacion)
-                # Col 14: OBSERVACIONES -> observaciones
-                _safe_set_cell_value(ws, row, 14, item.get("observaciones", ""))
+                # Mapear campos según la plantilla (40 columnas)
+                # Col A (1): ID
+                _safe_set_cell_value(ws, row, 1, item.get("id", idx + 1))
+                # Col B (2): INVENTARIO
+                _safe_set_cell_value(ws, row, 2, item.get("inventario", ""))
+                # Col C (3): EQUIPO PM
+                _safe_set_cell_value(ws, row, 3, item.get("equipo_pm", ""))
+                # Col D (4): FECHA REGISTRO
+                _safe_set_cell_value(ws, row, 4, item.get("fecha_registro", ""))
+                # Col E (5): TIPO DE EQUIPO
+                _safe_set_cell_value(ws, row, 5, item.get("tipo_equipo", ""))
+                # Col F (6): MARCA
+                _safe_set_cell_value(ws, row, 6, item.get("marca", ""))
+                # Col G (7): MODELO
+                _safe_set_cell_value(ws, row, 7, item.get("modelo", ""))
+                # Col H (8): PROCESADOR
+                _safe_set_cell_value(ws, row, 8, item.get("procesador", ""))
+                # Col I (9): NUMERO DE SERIE
+                _safe_set_cell_value(ws, row, 9, item.get("numero_serie", ""))
+                # Col J (10): DISCO DURO
+                _safe_set_cell_value(ws, row, 10, item.get("disco_duro", ""))
+                # Col K (11): MEMORIA
+                _safe_set_cell_value(ws, row, 11, item.get("memoria", ""))
+                # Col L (12): SISTEMA OPERATIVO INSTALADO
+                _safe_set_cell_value(ws, row, 12, item.get("sistema_operativo_instalado", item.get("sistema_operativo", "")))
+                # Col M (13): ETIQUETA DE SISTEMA OPERATIVO
+                _safe_set_cell_value(ws, row, 13, item.get("etiqueta_sistema_operativo", ""))
+                # Col N (14): OFFICE INSTALADO
+                _safe_set_cell_value(ws, row, 14, item.get("office_instalado", ""))
+                # Col O (15): DIRECCIÓN FISICA DEL EQUIPO
+                _safe_set_cell_value(ws, row, 15, item.get("direccion_fisica", item.get("ubicacion_fisica", "")))
+                # Col P (16): ESTADO
+                _safe_set_cell_value(ws, row, 16, item.get("estado", ""))
+                # Col Q (17): CIUDAD
+                _safe_set_cell_value(ws, row, 17, item.get("ciudad", ""))
+                # Col R (18): TIPO DE EDIFICIO
+                _safe_set_cell_value(ws, row, 18, item.get("tipo_edificio", ""))
+                # Col S (19): NOMBRE DEL EDIFICIO
+                _safe_set_cell_value(ws, row, 19, item.get("nombre_edificio", ""))
+                # Col T (20): TIPO DE USO
+                _safe_set_cell_value(ws, row, 20, item.get("tipo_uso", ""))
+                # Col U (21): NOMBRE DEL EQUIPO EN DOMINIO
+                _safe_set_cell_value(ws, row, 21, item.get("nombre_equipo_dominio", ""))
+                # Col V (22): STATUS
+                _safe_set_cell_value(ws, row, 22, item.get("status", ""))
+                # Col W (23): DIRECCIÓN ADMINISTRATIVA
+                _safe_set_cell_value(ws, row, 23, item.get("direccion_administrativa", ""))
+                # Col X (24): SUBDIRECCIÓN
+                _safe_set_cell_value(ws, row, 24, item.get("subdireccion", ""))
+                # Col Y (25): GERENCIA
+                _safe_set_cell_value(ws, row, 25, item.get("gerencia", ""))
+                # Col Z (26): EXPEDIENTE (Usuario Final)
+                _safe_set_cell_value(ws, row, 26, item.get("expediente_final", ""))
+                # Col AA (27): NOMBRE COMPLETO (Usuario Final)
+                _safe_set_cell_value(ws, row, 27, item.get("nombre_completo_final", ""))
+                # Col AB (28): APELLIDO PATERNO (Usuario Final)
+                _safe_set_cell_value(ws, row, 28, item.get("apellido_paterno_final", ""))
+                # Col AC (29): APELLIDO MATERNO (Usuario Final)
+                _safe_set_cell_value(ws, row, 29, item.get("apellido_materno_final", ""))
+                # Col AD (30): NOMBRE (Usuario Final)
+                _safe_set_cell_value(ws, row, 30, item.get("nombre_final", ""))
+                # Col AE (31): EMPRESA (Usuario Final)
+                _safe_set_cell_value(ws, row, 31, item.get("empresa_final", ""))
+                # Col AF (32): PUESTO (Usuario Final)
+                _safe_set_cell_value(ws, row, 32, item.get("puesto_final", ""))
+                # Col AG (33): EXPEDIENTE (Usuario Responsable)
+                _safe_set_cell_value(ws, row, 33, item.get("expediente_responsable", ""))
+                # Col AH (34): NOMBRE COMPLETO (Usuario Responsable)
+                _safe_set_cell_value(ws, row, 34, item.get("nombre_completo_responsable", ""))
+                # Col AI (35): APELLIDO PATERNO (Usuario Responsable)
+                _safe_set_cell_value(ws, row, 35, item.get("apellido_paterno_responsable", ""))
+                # Col AJ (36): APELLIDO MATERNO (Usuario Responsable)
+                _safe_set_cell_value(ws, row, 36, item.get("apellido_materno_responsable", ""))
+                # Col AK (37): NOMBRE (Usuario Responsable)
+                _safe_set_cell_value(ws, row, 37, item.get("nombre_responsable", ""))
+                # Col AL (38): EMPRESA (Usuario Responsable)
+                _safe_set_cell_value(ws, row, 38, item.get("empresa_responsable", ""))
+                # Col AM (39): PUESTO (Usuario Responsable)
+                _safe_set_cell_value(ws, row, 39, item.get("puesto_responsable", ""))
+                # Col AN (40): OBSERVACIONES
+                _safe_set_cell_value(ws, row, 40, item.get("observaciones", ""))
                 
-                # Aplicar formato de la fila 7 a cada celda
-                for col in range(1, 15):
+                # Aplicar formato de la fila 5 a cada celda
+                for col in range(1, 41):
                     cell = ws.cell(row=row, column=col)
                     ref_format = reference_cells[col]
                     

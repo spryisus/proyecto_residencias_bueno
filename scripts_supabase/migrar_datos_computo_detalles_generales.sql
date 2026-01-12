@@ -199,3 +199,4 @@ WHERE temp.inventario IS NOT NULL
     AND temp.tipo_equipo != '';
 */
 
+

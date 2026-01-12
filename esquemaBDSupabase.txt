@@ -14,6 +14,20 @@ CREATE TABLE public.inventory_sessions (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT inventory_sessions_pkey PRIMARY KEY (id)
 );
+CREATE TABLE public.t_accesorios_equipos (
+  id_accesorio bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  inventario text,
+  id_equipo_computo bigint NOT NULL,
+  fecha_registro date,
+  tipo_equipo text,
+  marca text,
+  modelo text,
+  numero_serie text,
+  creado_en timestamp with time zone DEFAULT now(),
+  actualizado_en timestamp with time zone DEFAULT now(),
+  CONSTRAINT t_accesorios_equipos_pkey PRIMARY KEY (id_accesorio),
+  CONSTRAINT fk_accesorios_equipo_computo FOREIGN KEY (id_equipo_computo) REFERENCES public.t_computo_detalles_generales(id_equipo_computo)
+);
 CREATE TABLE public.t_bitacora_envios (
   id_bitacora integer NOT NULL DEFAULT nextval('t_bitacora_envios_id_bitacora_seq'::regclass),
   consecutivo text NOT NULL,
@@ -42,6 +56,104 @@ CREATE TABLE public.t_categorias (
   descripcion text,
   CONSTRAINT t_categorias_pkey PRIMARY KEY (id_categoria)
 );
+CREATE TABLE public.t_computo_detalles_generales (
+  id_equipo_computo bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  inventario text NOT NULL UNIQUE,
+  equipo_pm bigint,
+  fecha_registro date,
+  tipo_equipo text NOT NULL,
+  marca text,
+  modelo text,
+  procesador text,
+  numero_serie text,
+  disco_duro text,
+  memoria_ram text,
+  creado_en timestamp with time zone DEFAULT now(),
+  actualizado_en timestamp with time zone DEFAULT now(),
+  id_ubicacion bigint,
+  id_usuario_responsable bigint,
+  CONSTRAINT t_computo_detalles_generales_pkey PRIMARY KEY (id_equipo_computo),
+  CONSTRAINT fk_equipo_usuario_responsable FOREIGN KEY (id_usuario_responsable) REFERENCES public.t_computo_usuario_responsable(id_usuario_responsable),
+  CONSTRAINT fk_equipo_ubicacion FOREIGN KEY (id_ubicacion) REFERENCES public.t_computo_ubicacion(id_ubicacion),
+  CONSTRAINT t_computo_detalles_generales_equipo_pm_fkey FOREIGN KEY (equipo_pm) REFERENCES public.t_computo_equipos_principales(id_equipo_principal)
+);
+CREATE TABLE public.t_computo_equipos_principales (
+  id_equipo_principal bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  equipo_pm text NOT NULL UNIQUE,
+  creado_en timestamp with time zone DEFAULT now(),
+  actualizado_en timestamp with time zone DEFAULT now(),
+  CONSTRAINT t_computo_equipos_principales_pkey PRIMARY KEY (id_equipo_principal)
+);
+CREATE TABLE public.t_computo_identificacion (
+  id_identificacion bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  id_equipo_computo bigint,
+  tipo_uso text,
+  nombre_equipo_dominio text,
+  status text NOT NULL DEFAULT 'ASIGNADO'::text,
+  direccion_administrativa text,
+  subdireccion text,
+  gerencia text,
+  creado_en timestamp with time zone DEFAULT now(),
+  actualizado_en timestamp with time zone DEFAULT now(),
+  CONSTRAINT t_computo_identificacion_pkey PRIMARY KEY (id_identificacion),
+  CONSTRAINT fk_equipo_computo_identificacion FOREIGN KEY (id_equipo_computo) REFERENCES public.t_computo_detalles_generales(id_equipo_computo)
+);
+CREATE TABLE public.t_computo_observaciones (
+  id_observacion bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  id_equipo_computo text,
+  observaciones text,
+  creado_en timestamp with time zone DEFAULT now(),
+  actualizado_en timestamp with time zone DEFAULT now(),
+  CONSTRAINT t_computo_observaciones_pkey PRIMARY KEY (id_observacion)
+);
+CREATE TABLE public.t_computo_software (
+  id_software bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  id_equipo_computo bigint NOT NULL,
+  sistema_operativo_instalado text,
+  etiqueta_sistema_operativo text,
+  office_instalado text,
+  creado_en timestamp with time zone DEFAULT now(),
+  actualizado_en timestamp with time zone DEFAULT now(),
+  CONSTRAINT t_computo_software_pkey PRIMARY KEY (id_software),
+  CONSTRAINT fk_equipo_computo_software FOREIGN KEY (id_equipo_computo) REFERENCES public.t_computo_detalles_generales(id_equipo_computo)
+);
+CREATE TABLE public.t_computo_ubicacion (
+  id_ubicacion bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  direccion_fisica text NOT NULL,
+  estado text NOT NULL,
+  ciudad text NOT NULL,
+  tipo_edificio text,
+  nombre_edificio text,
+  creado_en timestamp with time zone DEFAULT now(),
+  actualizado_en timestamp with time zone DEFAULT now(),
+  CONSTRAINT t_computo_ubicacion_pkey PRIMARY KEY (id_ubicacion)
+);
+CREATE TABLE public.t_computo_usuario_final (
+  id_usuario_final bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  id_equipo_computo bigint,
+  expediente text,
+  apellido_paterno text,
+  apellido_materno text,
+  nombre text NOT NULL,
+  empresa text NOT NULL,
+  puesto text,
+  creado_en timestamp with time zone DEFAULT now(),
+  actualizado_en timestamp with time zone DEFAULT now(),
+  CONSTRAINT t_computo_usuario_final_pkey PRIMARY KEY (id_usuario_final),
+  CONSTRAINT fk_equipo_computo_usuario_final FOREIGN KEY (id_equipo_computo) REFERENCES public.t_computo_detalles_generales(id_equipo_computo)
+);
+CREATE TABLE public.t_computo_usuario_responsable (
+  id_usuario_responsable bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  expediente text,
+  apellido_paterno text,
+  apellido_materno text,
+  nombre text NOT NULL,
+  empresa text NOT NULL,
+  puesto text,
+  creado_en timestamp with time zone DEFAULT now(),
+  actualizado_en timestamp with time zone DEFAULT now(),
+  CONSTRAINT t_computo_usuario_responsable_pkey PRIMARY KEY (id_usuario_responsable)
+);
 CREATE TABLE public.t_datos_fijos_sdr (
   id_dato_fijo integer NOT NULL DEFAULT nextval('t_datos_fijos_sdr_id_dato_fijo_seq'::regclass),
   campo_nombre text NOT NULL UNIQUE,
@@ -67,50 +179,6 @@ CREATE TABLE public.t_empleados (
   activo boolean NOT NULL DEFAULT true,
   creado_en timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT t_empleados_pkey PRIMARY KEY (id_empleado)
-);
-CREATE TABLE public.t_empleados_computo (
-  id_empleado_computo integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  id_empleado uuid,
-  expediente text,
-  nombre_completo text NOT NULL,
-  apellido_paterno text,
-  apellido_materno text,
-  nombre text,
-  empresa text NOT NULL,
-  puesto text,
-  activo boolean NOT NULL DEFAULT true,
-  creado_en timestamp with time zone NOT NULL DEFAULT now(),
-  actualizado_en timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT t_empleados_computo_pkey PRIMARY KEY (id_empleado_computo),
-  CONSTRAINT fk_empleado FOREIGN KEY (id_empleado) REFERENCES public.t_empleados(id_empleado)
-);
-CREATE TABLE public.t_equipos_computo (
-  id_equipo_computo bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  id_equipo_original integer,
-  inventario text NOT NULL,
-  equipo_pm text,
-  fecha_registro date,
-  tipo_equipo text NOT NULL,
-  marca text,
-  modelo text,
-  procesador text,
-  numero_serie text,
-  disco_duro text,
-  memoria text,
-  sistema_operativo_instalado text,
-  etiqueta_sistema_operativo text,
-  office_instalado text,
-  tipo_uso text,
-  nombre_equipo_dominio text,
-  status text NOT NULL DEFAULT 'ASIGNADO'::text,
-  id_empleado_asignado integer,
-  id_empleado_responsable integer,
-  observaciones text,
-  creado_en timestamp with time zone NOT NULL DEFAULT now(),
-  actualizado_en timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT t_equipos_computo_pkey PRIMARY KEY (id_equipo_computo),
-  CONSTRAINT fk_empleado_asignado FOREIGN KEY (id_empleado_asignado) REFERENCES public.t_empleados_computo(id_empleado_computo),
-  CONSTRAINT fk_empleado_responsable FOREIGN KEY (id_empleado_responsable) REFERENCES public.t_empleados_computo(id_empleado_computo)
 );
 CREATE TABLE public.t_inventarios (
   id_inventario integer GENERATED ALWAYS AS IDENTITY NOT NULL,
@@ -195,4 +263,9 @@ CREATE TABLE public.t_ubicaciones (
   nombre text NOT NULL UNIQUE,
   descripcion text,
   CONSTRAINT t_ubicaciones_pkey PRIMARY KEY (id_ubicacion)
+);
+CREATE TABLE public.temp_observaciones_import (
+  id_observacion text,
+  id_equipo_computo text,
+  observaciones text
 );

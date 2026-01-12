@@ -159,87 +159,71 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
           final inventarioEquipo = equipo['inventario']?.toString() ?? '';
           final idEquipoComputo = equipo['id_equipo_computo'];
           
-          if (inventarioEquipo.isNotEmpty) {
+          if (idEquipoComputo != null) {
             try {
-              // Intentar primero con la vista completa usando inventario_equipo
-              final componentesResponse = await _safeSupabaseCall(() => 
+              // Cargar accesorios desde t_accesorios_equipos
+              final accesoriosResponse = await _safeSupabaseCall(() => 
                 supabaseClient
-                    .from('v_componentes_computo_completo')
+                    .from('t_accesorios_equipos')
                     .select('*')
-                    .eq('inventario_equipo', inventarioEquipo)
+                    .eq('id_equipo_computo', idEquipoComputo)
               );
               
-              if (componentesResponse != null && mounted) {
-                equipo['t_componentes_computo'] = List<Map<String, dynamic>>.from(componentesResponse);
-                print('✅ Componentes cargados desde vista completa para ${inventarioEquipo}: ${equipo['t_componentes_computo'].length}');
+              if (accesoriosResponse != null && mounted) {
+                // Convertir accesorios al formato esperado
+                equipo['t_componentes_computo'] = (accesoriosResponse as List).map((accesorio) {
+                  return {
+                    'tipo_componente': accesorio['tipo_equipo'] ?? 'Accesorio',
+                    'marca': accesorio['marca'],
+                    'modelo': accesorio['modelo'],
+                    'numero_serie': accesorio['numero_serie'],
+                    'inventario': accesorio['inventario'],
+                  };
+                }).toList();
+                print('✅ Accesorios cargados para equipo ${idEquipoComputo}: ${equipo['t_componentes_computo'].length}');
               } else {
                 equipo['t_componentes_computo'] = [];
               }
             } catch (e) {
-              if (!mounted) return; // Verificar después de error
-              
-              // Si falla la vista, intentar con la tabla normal usando inventario_equipo
-              try {
-                final componentesResponseAlt = await _safeSupabaseCall(() => 
-                  supabaseClient
-                      .from('t_componentes_computo')
-                      .select('tipo_componente, marca, modelo, numero_serie')
-                      .eq('inventario_equipo', inventarioEquipo)
-                );
-                
-                if (componentesResponseAlt != null && mounted) {
-                  equipo['t_componentes_computo'] = List<Map<String, dynamic>>.from(componentesResponseAlt);
-                  print('✅ Componentes cargados desde tabla normal para ${inventarioEquipo}: ${equipo['t_componentes_computo'].length}');
-                } else {
-                  equipo['t_componentes_computo'] = [];
-                }
-              } catch (e2) {
-                if (!mounted) return; // Verificar después de error
-                
-                // Si también falla, intentar con id_equipo_computo
-                if (idEquipoComputo != null) {
-                  try {
-                    final componentesResponseId = await _safeSupabaseCall(() => 
-                      supabaseClient
-                          .from('t_componentes_computo')
-                          .select('tipo_componente, marca, modelo, numero_serie')
-                          .eq('id_equipo_computo', idEquipoComputo)
-                    );
-                    
-                    if (componentesResponseId != null && mounted) {
-                      equipo['t_componentes_computo'] = List<Map<String, dynamic>>.from(componentesResponseId);
-                      print('✅ Componentes cargados por id_equipo_computo para ${inventarioEquipo}: ${equipo['t_componentes_computo'].length}');
-                    } else {
-                      equipo['t_componentes_computo'] = [];
-                    }
-                  } catch (e3) {
-                    if (!mounted) return; // Verificar después de error
-                    debugPrint('Error al cargar componentes para ${inventarioEquipo}: $e3');
-                    equipo['t_componentes_computo'] = [];
-                  }
-                } else {
-                  debugPrint('No se pudo cargar componentes para ${inventarioEquipo}: sin id_equipo_computo');
-                  equipo['t_componentes_computo'] = [];
-                }
-              }
+              if (!mounted) return;
+              debugPrint('Error al cargar accesorios para ${inventarioEquipo}: $e');
+              equipo['t_componentes_computo'] = [];
             }
           } else {
             equipo['t_componentes_computo'] = [];
           }
           
-          // La vista v_equipos_computo_completo debería tener el nombre del empleado
-          // Intentar obtener el nombre desde diferentes campos posibles
-          final nombreEmpleadoAsignado = equipo['empleado_asignado_nombre'] ?? 
-                                         equipo['nombre_empleado_asignado'] ?? 
-                                         equipo['empleado_asignado'] ?? 
-                                         '';
-          equipo['empleado_asignado_nombre'] = nombreEmpleadoAsignado.toString().trim();
+          // Construir nombre completo del usuario final desde los campos de la vista
+          final nombreFinal = equipo['nombre_final']?.toString() ?? '';
+          final apellidoPaternoFinal = equipo['apellido_paterno_final']?.toString() ?? '';
+          final apellidoMaternoFinal = equipo['apellido_materno_final']?.toString() ?? '';
           
-          final nombreEmpleadoResponsable = equipo['empleado_responsable_nombre'] ?? 
-                                           equipo['nombre_empleado_responsable'] ?? 
-                                           equipo['empleado_responsable'] ?? 
-                                           '';
-          equipo['empleado_responsable_nombre'] = nombreEmpleadoResponsable.toString().trim();
+          String nombreCompletoFinal = '';
+          if (nombreFinal.isNotEmpty || apellidoPaternoFinal.isNotEmpty || apellidoMaternoFinal.isNotEmpty) {
+            final partes = [
+              nombreFinal,
+              apellidoPaternoFinal,
+              apellidoMaternoFinal
+            ].where((p) => p.isNotEmpty).toList();
+            nombreCompletoFinal = partes.join(' ');
+          }
+          equipo['empleado_asignado_nombre'] = nombreCompletoFinal;
+          
+          // Construir nombre completo del usuario responsable desde los campos de la vista
+          final nombreResponsable = equipo['nombre_responsable']?.toString() ?? '';
+          final apellidoPaternoResponsable = equipo['apellido_paterno_responsable']?.toString() ?? '';
+          final apellidoMaternoResponsable = equipo['apellido_materno_responsable']?.toString() ?? '';
+          
+          String nombreCompletoResponsable = '';
+          if (nombreResponsable.isNotEmpty || apellidoPaternoResponsable.isNotEmpty || apellidoMaternoResponsable.isNotEmpty) {
+            final partes = [
+              nombreResponsable,
+              apellidoPaternoResponsable,
+              apellidoMaternoResponsable
+            ].where((p) => p.isNotEmpty).toList();
+            nombreCompletoResponsable = partes.join(' ');
+          }
+          equipo['empleado_responsable_nombre'] = nombreCompletoResponsable;
         } catch (e) {
           if (!mounted) return; // Verificar después de error
           
@@ -383,32 +367,109 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
     if (!mounted || _scaffoldMessengerKey.currentState == null) return;
 
     try {
-      // Preparar datos para exportación según plantilla (14 columnas, incluyendo COMPONENTES)
-      final itemsToExport = _equiposFiltrados.map((equipo) {
-        // Formatear componentes: solo el tipo (MONITOR, TECLADO, MOUSE, etc.)
-        final componentes = equipo['t_componentes_computo'] as List<dynamic>? ?? [];
-        final componentesTexto = componentes
-            .map((comp) => (comp['tipo_componente'] ?? '').toString().trim().toUpperCase())
-            .where((tipo) => tipo.isNotEmpty)
-            .join('; ');
+      // Preparar datos para exportación: equipo principal + accesorios como filas separadas
+      final itemsToExport = <Map<String, dynamic>>[];
+      
+      for (var equipo in _equiposFiltrados) {
+        final idEquipoComputo = equipo['id_equipo_computo'];
+        final equipoPm = equipo['equipo_pm']?.toString() ?? '';
+        final inventarioPrincipal = equipo['inventario']?.toString() ?? '';
         
-        return {
-          'inventario': equipo['inventario'] ?? '',
-          'tipo_equipo': equipo['tipo_equipo'] ?? '',
-          'marca': equipo['marca'] ?? '',
-          'modelo': equipo['modelo'] ?? '',
-          'procesador': equipo['procesador'] ?? '',
-          'numero_serie': equipo['numero_serie'] ?? '',
-          'disco_duro': equipo['disco_duro'] ?? '',
-          'memoria': equipo['memoria'] ?? '',
-          'sistema_operativo_instalado': equipo['sistema_operativo_instalado'] ?? equipo['sistema_operativo'] ?? '',
-          'office_instalado': equipo['office_instalado'] ?? '',
-          'empleado_asignado': equipo['empleado_asignado_nombre'] ?? equipo['empleado_asignado'] ?? '',
-          'direccion_fisica': equipo['direccion_fisica'] ?? equipo['ubicacion_fisica'] ?? '',
-          'observaciones': equipo['observaciones'] ?? '',
-          'componentes': componentesTexto,
-        };
-      }).toList();
+        // 1. Agregar el equipo principal como primera fila con TODOS los campos
+        itemsToExport.add({
+          'id': idEquipoComputo,
+          'inventario': inventarioPrincipal,
+          'equipo_pm': equipoPm,
+          'fecha_registro': equipo['fecha_registro']?.toString() ?? '',
+          'tipo_equipo': equipo['tipo_equipo']?.toString() ?? '',
+          'marca': equipo['marca']?.toString() ?? '',
+          'modelo': equipo['modelo']?.toString() ?? '',
+          'procesador': equipo['procesador']?.toString() ?? '',
+          'numero_serie': equipo['numero_serie']?.toString() ?? '',
+          'disco_duro': equipo['disco_duro']?.toString() ?? '',
+          'memoria': equipo['memoria_ram']?.toString() ?? equipo['memoria']?.toString() ?? '',
+          'sistema_operativo_instalado': equipo['sistema_operativo_instalado']?.toString() ?? equipo['sistema_operativo']?.toString() ?? '',
+          'etiqueta_sistema_operativo': equipo['etiqueta_sistema_operativo']?.toString() ?? '',
+          'office_instalado': equipo['office_instalado']?.toString() ?? '',
+          'direccion_fisica': equipo['direccion_fisica']?.toString() ?? equipo['ubicacion_fisica']?.toString() ?? '',
+          'estado': equipo['estado_ubicacion']?.toString() ?? '',
+          'ciudad': equipo['ciudad']?.toString() ?? '',
+          'tipo_edificio': equipo['tipo_edificio']?.toString() ?? '',
+          'nombre_edificio': equipo['nombre_edificio']?.toString() ?? '',
+          'tipo_uso': equipo['tipo_uso']?.toString() ?? '',
+          'nombre_equipo_dominio': equipo['nombre_equipo_dominio']?.toString() ?? '',
+          'status': equipo['status']?.toString() ?? '',
+          'direccion_administrativa': equipo['direccion_administrativa']?.toString() ?? '',
+          'subdireccion': equipo['subdireccion']?.toString() ?? '',
+          'gerencia': equipo['gerencia']?.toString() ?? '',
+          // Usuario Final
+          'expediente_final': equipo['expediente_final']?.toString() ?? '',
+          'nombre_completo_final': equipo['empleado_asignado_nombre']?.toString() ?? '',
+          'apellido_paterno_final': equipo['apellido_paterno_final']?.toString() ?? '',
+          'apellido_materno_final': equipo['apellido_materno_final']?.toString() ?? '',
+          'nombre_final': equipo['nombre_final']?.toString() ?? '',
+          'empresa_final': equipo['empresa_final']?.toString() ?? '',
+          'puesto_final': equipo['puesto_final']?.toString() ?? '',
+          // Usuario Responsable
+          'expediente_responsable': equipo['expediente_responsable']?.toString() ?? '',
+          'nombre_completo_responsable': '${equipo['nombre_responsable'] ?? ''} ${equipo['apellido_paterno_responsable'] ?? ''} ${equipo['apellido_materno_responsable'] ?? ''}'.trim(),
+          'apellido_paterno_responsable': equipo['apellido_paterno_responsable']?.toString() ?? '',
+          'apellido_materno_responsable': equipo['apellido_materno_responsable']?.toString() ?? '',
+          'nombre_responsable': equipo['nombre_responsable']?.toString() ?? '',
+          'empresa_responsable': equipo['empresa_responsable']?.toString() ?? '',
+          'puesto_responsable': equipo['puesto_responsable']?.toString() ?? '',
+          'observaciones': equipo['observaciones']?.toString() ?? '',
+        });
+        
+        // 2. Agregar cada accesorio como una fila separada con el mismo ID y EQUIPO PM
+        final accesorios = equipo['t_componentes_computo'] as List<dynamic>? ?? [];
+        for (var accesorio in accesorios) {
+          itemsToExport.add({
+            'id': idEquipoComputo, // Mismo ID que el equipo principal
+            'inventario': accesorio['inventario']?.toString() ?? 'S/N',
+            'equipo_pm': equipoPm, // Mismo EQUIPO PM
+            'fecha_registro': accesorio['fecha_registro']?.toString() ?? equipo['fecha_registro']?.toString() ?? '',
+            'tipo_equipo': accesorio['tipo_componente']?.toString().toUpperCase() ?? accesorio['tipo_equipo']?.toString().toUpperCase() ?? '',
+            'marca': accesorio['marca']?.toString() ?? '',
+            'modelo': accesorio['modelo']?.toString() ?? '',
+            'procesador': '', // Los accesorios no tienen procesador
+            'numero_serie': accesorio['numero_serie']?.toString() ?? '',
+            'disco_duro': '', // Los accesorios no tienen disco duro
+            'memoria': '', // Los accesorios no tienen memoria
+            'sistema_operativo_instalado': '', // Los accesorios no tienen SO
+            'etiqueta_sistema_operativo': '', // Los accesorios no tienen etiqueta SO
+            'office_instalado': '', // Los accesorios no tienen Office
+            'direccion_fisica': equipo['direccion_fisica']?.toString() ?? equipo['ubicacion_fisica']?.toString() ?? '',
+            'estado': equipo['estado_ubicacion']?.toString() ?? '',
+            'ciudad': equipo['ciudad']?.toString() ?? '',
+            'tipo_edificio': equipo['tipo_edificio']?.toString() ?? '',
+            'nombre_edificio': equipo['nombre_edificio']?.toString() ?? '',
+            'tipo_uso': equipo['tipo_uso']?.toString() ?? '',
+            'nombre_equipo_dominio': equipo['nombre_equipo_dominio']?.toString() ?? '',
+            'status': equipo['status']?.toString() ?? '',
+            'direccion_administrativa': equipo['direccion_administrativa']?.toString() ?? '',
+            'subdireccion': equipo['subdireccion']?.toString() ?? '',
+            'gerencia': equipo['gerencia']?.toString() ?? '',
+            // Usuario Final (mismo que el equipo principal)
+            'expediente_final': equipo['expediente_final']?.toString() ?? '',
+            'nombre_completo_final': equipo['empleado_asignado_nombre']?.toString() ?? '',
+            'apellido_paterno_final': equipo['apellido_paterno_final']?.toString() ?? '',
+            'apellido_materno_final': equipo['apellido_materno_final']?.toString() ?? '',
+            'nombre_final': equipo['nombre_final']?.toString() ?? '',
+            'empresa_final': equipo['empresa_final']?.toString() ?? '',
+            'puesto_final': equipo['puesto_final']?.toString() ?? '',
+            // Usuario Responsable (mismo que el equipo principal)
+            'expediente_responsable': equipo['expediente_responsable']?.toString() ?? '',
+            'nombre_completo_responsable': '${equipo['nombre_responsable'] ?? ''} ${equipo['apellido_paterno_responsable'] ?? ''} ${equipo['apellido_materno_responsable'] ?? ''}'.trim(),
+            'apellido_paterno_responsable': equipo['apellido_paterno_responsable']?.toString() ?? '',
+            'apellido_materno_responsable': equipo['apellido_materno_responsable']?.toString() ?? '',
+            'nombre_responsable': equipo['nombre_responsable']?.toString() ?? '',
+            'empresa_responsable': equipo['empresa_responsable']?.toString() ?? '',
+            'puesto_responsable': equipo['puesto_responsable']?.toString() ?? '',
+            'observaciones': accesorio['observaciones']?.toString() ?? '',
+          });
+        }
+      }
 
       final filePath = await ComputoExportService.exportComputoToExcel(itemsToExport);
 
@@ -480,7 +541,7 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
           ),
         ],
       ),
-      floatingActionButton: !_modoInventario && _equiposFiltrados.isNotEmpty
+      floatingActionButton: !_modoInventario && _equiposFiltrados.isNotEmpty && !_isAdmin
           ? FloatingActionButton.extended(
               onPressed: () async {
                 // DESHABILITADO: Cargar progreso guardado automáticamente
@@ -1559,20 +1620,128 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Campos según plantilla Excel (13 columnas)
+                      // Información de t_computo_detalles_generales
+                      _buildInfoRow('Inventario', equipo['inventario']),
+                      _buildInfoRow('Fecha de Registro', equipo['fecha_registro']?.toString()),
                       _buildInfoRow('Tipo Equipo', equipo['tipo_equipo']),
                       _buildInfoRow('Marca', equipo['marca']),
                       _buildInfoRow('Modelo', equipo['modelo']),
                       _buildInfoRow('Procesador', equipo['procesador']),
                       _buildInfoRow('Número Serie', equipo['numero_serie']),
                       _buildInfoRow('Disco Duro', equipo['disco_duro']),
-                      _buildInfoRow('Memoria', equipo['memoria']),
+                      _buildInfoRow('Memoria RAM', equipo['memoria_ram']),
+                      
+                      // Información de t_computo_software
+                      if (equipo['sistema_operativo_instalado'] != null || equipo['sistema_operativo'] != null) ...[
+                        const Divider(height: 24),
+                        const Text(
+                          'Software',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF003366),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
                       _buildInfoRow('Sistema Operativo Instalado', equipo['sistema_operativo_instalado'] ?? equipo['sistema_operativo']),
+                      _buildInfoRow('Etiqueta Sistema Operativo', equipo['etiqueta_sistema_operativo']),
                       _buildInfoRow('Office Instalado', equipo['office_instalado']),
-                      _buildInfoRow('Usuario Asignado', equipo['empleado_asignado_nombre'] ?? equipo['empleado_asignado']),
-                      _buildInfoRow('Ubicación', equipo['direccion_fisica'] ?? equipo['ubicacion_fisica']),
-                      if (equipo['observaciones'] != null && equipo['observaciones'].toString().isNotEmpty)
+                      
+                      // Información de t_computo_identificacion
+                      if (equipo['tipo_uso'] != null || equipo['nombre_equipo_dominio'] != null || equipo['status'] != null) ...[
+                        const Divider(height: 24),
+                        const Text(
+                          'Identificación',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF003366),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      _buildInfoRow('Tipo de Uso', equipo['tipo_uso']),
+                      _buildInfoRow('Nombre Equipo/Dominio', equipo['nombre_equipo_dominio']),
+                      _buildInfoRow('Status', equipo['status']),
+                      _buildInfoRow('Dirección Administrativa', equipo['direccion_administrativa']),
+                      _buildInfoRow('Subdirección', equipo['subdireccion']),
+                      _buildInfoRow('Gerencia', equipo['gerencia']),
+                      
+                      // Información de t_computo_ubicacion
+                      if (equipo['direccion_fisica'] != null || equipo['estado_ubicacion'] != null) ...[
+                        const Divider(height: 24),
+                        const Text(
+                          'Ubicación',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF003366),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      _buildInfoRow('Dirección Física', equipo['direccion_fisica'] ?? equipo['ubicacion_fisica']),
+                      _buildInfoRow('Estado', equipo['estado_ubicacion']),
+                      _buildInfoRow('Ciudad', equipo['ciudad']),
+                      _buildInfoRow('Tipo de Edificio', equipo['tipo_edificio']),
+                      _buildInfoRow('Nombre del Edificio', equipo['nombre_edificio']),
+                      
+                      // Información de t_computo_usuario_responsable
+                      if (equipo['nombre_responsable'] != null) ...[
+                        const Divider(height: 24),
+                        const Text(
+                          'Usuario Responsable',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF003366),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      _buildInfoRow('Nombre Responsable', equipo['nombre_responsable'] != null 
+                        ? '${equipo['nombre_responsable']} ${equipo['apellido_paterno_responsable'] ?? ''} ${equipo['apellido_materno_responsable'] ?? ''}'.trim()
+                        : null),
+                      _buildInfoRow('Expediente Responsable', equipo['expediente_responsable']),
+                      _buildInfoRow('Empresa Responsable', equipo['empresa_responsable']),
+                      _buildInfoRow('Puesto Responsable', equipo['puesto_responsable']),
+                      
+                      // Información de t_computo_usuario_final
+                      if (equipo['nombre_final'] != null || equipo['empleado_asignado_nombre'] != null) ...[
+                        const Divider(height: 24),
+                        const Text(
+                          'Usuario Final',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF003366),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      _buildInfoRow('Usuario Asignado', equipo['empleado_asignado_nombre'] ?? 
+                        (equipo['nombre_final'] != null 
+                          ? '${equipo['nombre_final']} ${equipo['apellido_paterno_final'] ?? ''} ${equipo['apellido_materno_final'] ?? ''}'.trim()
+                          : null)),
+                      _buildInfoRow('Expediente Final', equipo['expediente_final']),
+                      _buildInfoRow('Empresa Final', equipo['empresa_final']),
+                      _buildInfoRow('Puesto Final', equipo['puesto_final']),
+                      
+                      // Información de t_computo_observaciones
+                      if (equipo['observaciones'] != null && equipo['observaciones'].toString().isNotEmpty) ...[
+                        const Divider(height: 24),
+                        const Text(
+                          'Observaciones',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF003366),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         _buildInfoRow('Observaciones', equipo['observaciones']),
+                      ],
                       
                       // Componentes/Accesorios
                       if (componentes.isNotEmpty) ...[
@@ -2008,20 +2177,128 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Información del equipo - Campos según plantilla Excel (13 columnas)
+                // Información de t_computo_detalles_generales
+                _buildInfoRow('Inventario', equipo['inventario']),
+                _buildInfoRow('Fecha de Registro', equipo['fecha_registro']?.toString()),
                 _buildInfoRow('Tipo Equipo', equipo['tipo_equipo']),
                 _buildInfoRow('Marca', equipo['marca']),
                 _buildInfoRow('Modelo', equipo['modelo']),
                 _buildInfoRow('Procesador', equipo['procesador']),
                 _buildInfoRow('Número Serie', equipo['numero_serie']),
                 _buildInfoRow('Disco Duro', equipo['disco_duro']),
-                _buildInfoRow('Memoria', equipo['memoria']),
+                _buildInfoRow('Memoria RAM', equipo['memoria_ram']),
+                
+                // Información de t_computo_software
+                if (equipo['sistema_operativo_instalado'] != null || equipo['sistema_operativo'] != null) ...[
+                  const Divider(height: 24),
+                  const Text(
+                    'Software',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF003366),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 _buildInfoRow('Sistema Operativo Instalado', equipo['sistema_operativo_instalado'] ?? equipo['sistema_operativo']),
+                _buildInfoRow('Etiqueta Sistema Operativo', equipo['etiqueta_sistema_operativo']),
                 _buildInfoRow('Office Instalado', equipo['office_instalado']),
-                _buildInfoRow('Usuario Asignado', equipo['empleado_asignado_nombre'] ?? equipo['empleado_asignado']),
-                _buildInfoRow('Ubicación', equipo['direccion_fisica'] ?? equipo['ubicacion_fisica']),
-                if (equipo['observaciones'] != null && equipo['observaciones'].toString().isNotEmpty)
+                
+                // Información de t_computo_identificacion
+                if (equipo['tipo_uso'] != null || equipo['nombre_equipo_dominio'] != null || equipo['status'] != null) ...[
+                  const Divider(height: 24),
+                  const Text(
+                    'Identificación',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF003366),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                _buildInfoRow('Tipo de Uso', equipo['tipo_uso']),
+                _buildInfoRow('Nombre Equipo/Dominio', equipo['nombre_equipo_dominio']),
+                _buildInfoRow('Status', equipo['status']),
+                _buildInfoRow('Dirección Administrativa', equipo['direccion_administrativa']),
+                _buildInfoRow('Subdirección', equipo['subdireccion']),
+                _buildInfoRow('Gerencia', equipo['gerencia']),
+                
+                // Información de t_computo_ubicacion
+                if (equipo['direccion_fisica'] != null || equipo['estado_ubicacion'] != null) ...[
+                  const Divider(height: 24),
+                  const Text(
+                    'Ubicación',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF003366),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                _buildInfoRow('Dirección Física', equipo['direccion_fisica'] ?? equipo['ubicacion_fisica']),
+                _buildInfoRow('Estado', equipo['estado_ubicacion']),
+                _buildInfoRow('Ciudad', equipo['ciudad']),
+                _buildInfoRow('Tipo de Edificio', equipo['tipo_edificio']),
+                _buildInfoRow('Nombre del Edificio', equipo['nombre_edificio']),
+                
+                // Información de t_computo_usuario_responsable
+                if (equipo['nombre_responsable'] != null) ...[
+                  const Divider(height: 24),
+                  const Text(
+                    'Usuario Responsable',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF003366),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                _buildInfoRow('Nombre Responsable', equipo['nombre_responsable'] != null 
+                  ? '${equipo['nombre_responsable']} ${equipo['apellido_paterno_responsable'] ?? ''} ${equipo['apellido_materno_responsable'] ?? ''}'.trim()
+                  : null),
+                _buildInfoRow('Expediente Responsable', equipo['expediente_responsable']),
+                _buildInfoRow('Empresa Responsable', equipo['empresa_responsable']),
+                _buildInfoRow('Puesto Responsable', equipo['puesto_responsable']),
+                
+                // Información de t_computo_usuario_final
+                if (equipo['nombre_final'] != null || equipo['empleado_asignado_nombre'] != null) ...[
+                  const Divider(height: 24),
+                  const Text(
+                    'Usuario Final',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF003366),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                _buildInfoRow('Usuario Asignado', equipo['empleado_asignado_nombre'] ?? 
+                  (equipo['nombre_final'] != null 
+                    ? '${equipo['nombre_final']} ${equipo['apellido_paterno_final'] ?? ''} ${equipo['apellido_materno_final'] ?? ''}'.trim()
+                    : null)),
+                _buildInfoRow('Expediente Final', equipo['expediente_final']),
+                _buildInfoRow('Empresa Final', equipo['empresa_final']),
+                _buildInfoRow('Puesto Final', equipo['puesto_final']),
+                
+                // Información de t_computo_observaciones
+                if (equipo['observaciones'] != null && equipo['observaciones'].toString().isNotEmpty) ...[
+                  const Divider(height: 24),
+                  const Text(
+                    'Observaciones',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF003366),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   _buildInfoRow('Observaciones', equipo['observaciones']),
+                ],
 
                 // Componentes
                 if (componentes.isNotEmpty) ...[
@@ -2679,73 +2956,154 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
       builder: (context) => _EquipoDialog(
         equipo: {}, // Equipo vacío para crear uno nuevo
         onSave: (nuevoEquipo) async {
-          // Crear nuevo equipo en la base de datos
+          // Crear nuevo equipo en la base de datos usando las nuevas tablas
           try {
-            // Extraer y limpiar los datos del nuevo equipo
-            final tipoEquipo = nuevoEquipo['tipo_equipo']?.toString().trim();
-            final marca = nuevoEquipo['marca']?.toString().trim();
-            final modelo = nuevoEquipo['modelo']?.toString().trim();
-            final procesador = nuevoEquipo['procesador']?.toString().trim();
-            final numeroSerie = nuevoEquipo['numero_serie']?.toString().trim();
-            final discoDuro = nuevoEquipo['disco_duro']?.toString().trim();
-            final memoria = nuevoEquipo['memoria']?.toString().trim();
-            final sistemaOperativo = nuevoEquipo['sistema_operativo_instalado']?.toString().trim();
-            final officeInstalado = nuevoEquipo['office_instalado']?.toString().trim();
-            final observaciones = nuevoEquipo['observaciones']?.toString().trim();
-
             // Generar inventario automáticamente si no se proporciona
-            // Formato: AUTO-YYYYMMDD-HHMMSS o usar número de serie si está disponible
-            String inventario;
-            if (numeroSerie != null && numeroSerie.isNotEmpty) {
-              inventario = 'AUTO-$numeroSerie';
-            } else {
-              final ahora = DateTime.now();
-              inventario = 'AUTO-${ahora.year}${ahora.month.toString().padLeft(2, '0')}${ahora.day.toString().padLeft(2, '0')}-${ahora.hour.toString().padLeft(2, '0')}${ahora.minute.toString().padLeft(2, '0')}${ahora.second.toString().padLeft(2, '0')}';
+            String inventario = nuevoEquipo['inventario']?.toString().trim() ?? '';
+            if (inventario.isEmpty) {
+              final numeroSerie = nuevoEquipo['numero_serie']?.toString().trim() ?? '';
+              if (numeroSerie.isNotEmpty) {
+                inventario = 'AUTO-$numeroSerie';
+              } else {
+                final ahora = DateTime.now();
+                inventario = 'AUTO-${ahora.year}${ahora.month.toString().padLeft(2, '0')}${ahora.day.toString().padLeft(2, '0')}-${ahora.hour.toString().padLeft(2, '0')}${ahora.minute.toString().padLeft(2, '0')}${ahora.second.toString().padLeft(2, '0')}';
+              }
             }
 
-            // Preparar los datos para insertar según el esquema de la tabla
-            final datosInsert = <String, dynamic>{
-              'inventario': inventario, // REQUERIDO - NOT NULL
-              'tipo_equipo': tipoEquipo ?? '', // REQUERIDO - NOT NULL
-            };
+            // 1. Crear o obtener equipo_pm en t_computo_equipos_principales
+            final equipoPm = inventario; // Usar inventario como equipo_pm inicialmente
+            dynamic idEquipoPrincipal;
             
-            // Campos opcionales
-            if (marca != null && marca.isNotEmpty) datosInsert['marca'] = marca;
-            if (modelo != null && modelo.isNotEmpty) datosInsert['modelo'] = modelo;
-            if (procesador != null && procesador.isNotEmpty) datosInsert['procesador'] = procesador;
-            if (numeroSerie != null && numeroSerie.isNotEmpty) datosInsert['numero_serie'] = numeroSerie;
-            if (discoDuro != null && discoDuro.isNotEmpty) datosInsert['disco_duro'] = discoDuro;
-            if (memoria != null && memoria.isNotEmpty) datosInsert['memoria'] = memoria;
-            if (sistemaOperativo != null && sistemaOperativo.isNotEmpty) {
-              datosInsert['sistema_operativo_instalado'] = sistemaOperativo; // Nombre correcto según esquema
-            }
-            if (officeInstalado != null && officeInstalado.isNotEmpty) {
-              datosInsert['office_instalado'] = officeInstalado;
-            }
-            if (observaciones != null && observaciones.isNotEmpty) {
-              datosInsert['observaciones'] = observaciones;
-            }
-            // NOTA: ubicacion_fisica no existe directamente en la tabla
-            // Se maneja a través de id_ubicacion_fisica (FK a t_ubicaciones_computo)
-
-            // Insertar el nuevo equipo en la base de datos
-            final resultado = await _safeSupabaseCall(() => 
+            // Verificar si ya existe un equipo principal con este inventario
+            final equipoPrincipalExistente = await _safeSupabaseCall(() => 
               supabaseClient
-                  .from('t_equipos_computo')
-                  .insert(datosInsert)
-                  .select()
+                  .from('t_computo_equipos_principales')
+                  .select('id_equipo_principal')
+                  .eq('equipo_pm', equipoPm)
+                  .maybeSingle()
             );
             
-            if (resultado == null) {
+            if (equipoPrincipalExistente != null && equipoPrincipalExistente['id_equipo_principal'] != null) {
+              idEquipoPrincipal = equipoPrincipalExistente['id_equipo_principal'];
+            } else {
+              // Crear nuevo equipo principal
+              final nuevoEquipoPrincipal = await _safeSupabaseCall(() => 
+                supabaseClient
+                    .from('t_computo_equipos_principales')
+                    .insert({'equipo_pm': equipoPm})
+                    .select('id_equipo_principal')
+                    .single()
+              );
+              if (nuevoEquipoPrincipal == null) {
+                throw Exception('No se pudo crear el equipo principal');
+              }
+              idEquipoPrincipal = nuevoEquipoPrincipal['id_equipo_principal'];
+            }
+
+            // 2. Insertar en t_computo_detalles_generales
+            final datosDetalles = <String, dynamic>{
+              'equipo_pm': idEquipoPrincipal,
+              'inventario': inventario,
+              'tipo_equipo': nuevoEquipo['tipo_equipo']?.toString().trim() ?? '',
+            };
+            if (nuevoEquipo['marca']?.toString().trim().isNotEmpty ?? false) {
+              datosDetalles['marca'] = nuevoEquipo['marca']?.toString().trim();
+            }
+            if (nuevoEquipo['modelo']?.toString().trim().isNotEmpty ?? false) {
+              datosDetalles['modelo'] = nuevoEquipo['modelo']?.toString().trim();
+            }
+            if (nuevoEquipo['procesador']?.toString().trim().isNotEmpty ?? false) {
+              datosDetalles['procesador'] = nuevoEquipo['procesador']?.toString().trim();
+            }
+            if (nuevoEquipo['numero_serie']?.toString().trim().isNotEmpty ?? false) {
+              datosDetalles['numero_serie'] = nuevoEquipo['numero_serie']?.toString().trim();
+            }
+            if (nuevoEquipo['disco_duro']?.toString().trim().isNotEmpty ?? false) {
+              datosDetalles['disco_duro'] = nuevoEquipo['disco_duro']?.toString().trim();
+            }
+            if (nuevoEquipo['memoria_ram']?.toString().trim().isNotEmpty ?? false) {
+              datosDetalles['memoria_ram'] = nuevoEquipo['memoria_ram']?.toString().trim();
+            }
+
+            final resultadoDetalles = await _safeSupabaseCall(() => 
+              supabaseClient
+                  .from('t_computo_detalles_generales')
+                  .insert(datosDetalles)
+                  .select('id_equipo_computo')
+                  .single()
+            );
+            
+            if (resultadoDetalles == null || resultadoDetalles['id_equipo_computo'] == null) {
               throw Exception('No se pudo insertar el equipo en la base de datos');
             }
             
-            debugPrint('✅ Equipo insertado correctamente: $resultado');
+            final idEquipoComputo = resultadoDetalles['id_equipo_computo'];
+            debugPrint('✅ Equipo insertado correctamente con ID: $idEquipoComputo');
+
+            // 3. Insertar en t_computo_software si hay datos
+            if ((nuevoEquipo['sistema_operativo_instalado']?.toString().trim().isNotEmpty ?? false) ||
+                (nuevoEquipo['etiqueta_sistema_operativo']?.toString().trim().isNotEmpty ?? false) ||
+                (nuevoEquipo['office_instalado']?.toString().trim().isNotEmpty ?? false)) {
+              final datosSoftware = <String, dynamic>{'id_equipo_computo': idEquipoComputo};
+              if (nuevoEquipo['sistema_operativo_instalado']?.toString().trim().isNotEmpty ?? false) {
+                datosSoftware['sistema_operativo_instalado'] = nuevoEquipo['sistema_operativo_instalado']?.toString().trim();
+              }
+              if (nuevoEquipo['etiqueta_sistema_operativo']?.toString().trim().isNotEmpty ?? false) {
+                datosSoftware['etiqueta_sistema_operativo'] = nuevoEquipo['etiqueta_sistema_operativo']?.toString().trim();
+              }
+              if (nuevoEquipo['office_instalado']?.toString().trim().isNotEmpty ?? false) {
+                datosSoftware['office_instalado'] = nuevoEquipo['office_instalado']?.toString().trim();
+              }
+              await _safeSupabaseCall(() => 
+                supabaseClient
+                    .from('t_computo_software')
+                    .insert(datosSoftware)
+              );
+            }
+
+            // 4. Insertar en t_computo_identificacion si hay datos
+            if ((nuevoEquipo['tipo_uso']?.toString().trim().isNotEmpty ?? false) ||
+                (nuevoEquipo['nombre_equipo_dominio']?.toString().trim().isNotEmpty ?? false) ||
+                (nuevoEquipo['status']?.toString().trim().isNotEmpty ?? false)) {
+              final datosIdentificacion = <String, dynamic>{'id_equipo_computo': idEquipoComputo};
+              if (nuevoEquipo['tipo_uso']?.toString().trim().isNotEmpty ?? false) {
+                datosIdentificacion['tipo_uso'] = nuevoEquipo['tipo_uso']?.toString().trim();
+              }
+              if (nuevoEquipo['nombre_equipo_dominio']?.toString().trim().isNotEmpty ?? false) {
+                datosIdentificacion['nombre_equipo_dominio'] = nuevoEquipo['nombre_equipo_dominio']?.toString().trim();
+              }
+              if (nuevoEquipo['status']?.toString().trim().isNotEmpty ?? false) {
+                datosIdentificacion['status'] = nuevoEquipo['status']?.toString().trim();
+              }
+              if (nuevoEquipo['direccion_administrativa']?.toString().trim().isNotEmpty ?? false) {
+                datosIdentificacion['direccion_administrativa'] = nuevoEquipo['direccion_administrativa']?.toString().trim();
+              }
+              if (nuevoEquipo['subdireccion']?.toString().trim().isNotEmpty ?? false) {
+                datosIdentificacion['subdireccion'] = nuevoEquipo['subdireccion']?.toString().trim();
+              }
+              if (nuevoEquipo['gerencia']?.toString().trim().isNotEmpty ?? false) {
+                datosIdentificacion['gerencia'] = nuevoEquipo['gerencia']?.toString().trim();
+              }
+              await _safeSupabaseCall(() => 
+                supabaseClient
+                    .from('t_computo_identificacion')
+                    .insert(datosIdentificacion)
+              );
+            }
+
+            // 5. Insertar en t_computo_observaciones si hay datos
+            if (nuevoEquipo['observaciones']?.toString().trim().isNotEmpty ?? false) {
+              await _safeSupabaseCall(() => 
+                supabaseClient
+                    .from('t_computo_observaciones')
+                    .insert({
+                      'id_equipo_computo': idEquipoComputo,
+                      'observaciones': nuevoEquipo['observaciones']?.toString().trim(),
+                    })
+              );
+            }
             
             if (!mounted) return;
-
-            // Usar GlobalKey en lugar de context (SOLUCIÓN DEFINITIVA)
-            if (!mounted || _scaffoldMessengerKey.currentState == null) return;
 
             // Recargar los equipos
             if (mounted) {
@@ -2761,7 +3119,7 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
               }
             }
           } catch (e) {
-            // Usar GlobalKey en lugar de context (SOLUCIÓN DEFINITIVA)
+            debugPrint('Error al agregar equipo: $e');
             if (mounted && _scaffoldMessengerKey.currentState != null) {
               _scaffoldMessengerKey.currentState!.showSnackBar(
                 SnackBar(
@@ -3156,6 +3514,8 @@ class _EquipoDialog extends StatefulWidget {
 }
 
 class _EquipoDialogState extends State<_EquipoDialog> {
+  // Campos de t_computo_detalles_generales
+  late TextEditingController _inventarioController;
   late TextEditingController _tipoEquipoController;
   late TextEditingController _marcaController;
   late TextEditingController _modeloController;
@@ -3163,35 +3523,109 @@ class _EquipoDialogState extends State<_EquipoDialog> {
   late TextEditingController _numeroSerieController;
   late TextEditingController _discoDuroController;
   late TextEditingController _memoriaController;
+  
+  // Campos de t_computo_software
   late TextEditingController _sistemaOperativoController;
+  late TextEditingController _etiquetaSoController;
   late TextEditingController _officeInstaladoController;
+  
+  // Campos de t_computo_identificacion
+  late TextEditingController _tipoUsoController;
+  late TextEditingController _nombreEquipoDominioController;
+  late TextEditingController _statusController;
+  late TextEditingController _direccionAdministrativaController;
+  late TextEditingController _subdireccionController;
+  late TextEditingController _gerenciaController;
+  
+  // Campos de t_computo_ubicacion
   late TextEditingController _direccionFisicaController;
+  late TextEditingController _estadoController;
+  late TextEditingController _ciudadController;
+  late TextEditingController _tipoEdificioController;
+  late TextEditingController _nombreEdificioController;
+  
+  // Campos de t_computo_usuario_final
+  late TextEditingController _nombreFinalController;
+  late TextEditingController _apellidoPaternoFinalController;
+  late TextEditingController _apellidoMaternoFinalController;
+  late TextEditingController _expedienteFinalController;
+  late TextEditingController _empresaFinalController;
+  late TextEditingController _puestoFinalController;
+  
+  // Campos de t_computo_usuario_responsable
+  late TextEditingController _nombreResponsableController;
+  late TextEditingController _apellidoPaternoResponsableController;
+  late TextEditingController _apellidoMaternoResponsableController;
+  late TextEditingController _expedienteResponsableController;
+  late TextEditingController _empresaResponsableController;
+  late TextEditingController _puestoResponsableController;
+  
+  // Campos de t_computo_observaciones
   late TextEditingController _observacionesController;
 
   @override
   void initState() {
     super.initState();
+    // Campos de t_computo_detalles_generales
+    _inventarioController = TextEditingController(text: widget.equipo['inventario']?.toString() ?? '');
     _tipoEquipoController = TextEditingController(text: widget.equipo['tipo_equipo']?.toString() ?? '');
     _marcaController = TextEditingController(text: widget.equipo['marca']?.toString() ?? '');
     _modeloController = TextEditingController(text: widget.equipo['modelo']?.toString() ?? '');
     _procesadorController = TextEditingController(text: widget.equipo['procesador']?.toString() ?? '');
     _numeroSerieController = TextEditingController(text: widget.equipo['numero_serie']?.toString() ?? '');
     _discoDuroController = TextEditingController(text: widget.equipo['disco_duro']?.toString() ?? '');
-    _memoriaController = TextEditingController(text: widget.equipo['memoria']?.toString() ?? '');
+    _memoriaController = TextEditingController(text: widget.equipo['memoria_ram']?.toString() ?? widget.equipo['memoria']?.toString() ?? '');
+    
+    // Campos de t_computo_software
     _sistemaOperativoController = TextEditingController(
       text: widget.equipo['sistema_operativo_instalado']?.toString() ?? 
             widget.equipo['sistema_operativo']?.toString() ?? ''
     );
+    _etiquetaSoController = TextEditingController(text: widget.equipo['etiqueta_sistema_operativo']?.toString() ?? '');
     _officeInstaladoController = TextEditingController(text: widget.equipo['office_instalado']?.toString() ?? '');
+    
+    // Campos de t_computo_identificacion
+    _tipoUsoController = TextEditingController(text: widget.equipo['tipo_uso']?.toString() ?? '');
+    _nombreEquipoDominioController = TextEditingController(text: widget.equipo['nombre_equipo_dominio']?.toString() ?? '');
+    _statusController = TextEditingController(text: widget.equipo['status']?.toString() ?? 'ASIGNADO');
+    _direccionAdministrativaController = TextEditingController(text: widget.equipo['direccion_administrativa']?.toString() ?? '');
+    _subdireccionController = TextEditingController(text: widget.equipo['subdireccion']?.toString() ?? '');
+    _gerenciaController = TextEditingController(text: widget.equipo['gerencia']?.toString() ?? '');
+    
+    // Campos de t_computo_ubicacion
     _direccionFisicaController = TextEditingController(
       text: widget.equipo['direccion_fisica']?.toString() ?? 
             widget.equipo['ubicacion_fisica']?.toString() ?? ''
     );
+    _estadoController = TextEditingController(text: widget.equipo['estado_ubicacion']?.toString() ?? '');
+    _ciudadController = TextEditingController(text: widget.equipo['ciudad']?.toString() ?? '');
+    _tipoEdificioController = TextEditingController(text: widget.equipo['tipo_edificio']?.toString() ?? '');
+    _nombreEdificioController = TextEditingController(text: widget.equipo['nombre_edificio']?.toString() ?? '');
+    
+    // Campos de t_computo_usuario_final
+    _nombreFinalController = TextEditingController(text: widget.equipo['nombre_final']?.toString() ?? '');
+    _apellidoPaternoFinalController = TextEditingController(text: widget.equipo['apellido_paterno_final']?.toString() ?? '');
+    _apellidoMaternoFinalController = TextEditingController(text: widget.equipo['apellido_materno_final']?.toString() ?? '');
+    _expedienteFinalController = TextEditingController(text: widget.equipo['expediente_final']?.toString() ?? '');
+    _empresaFinalController = TextEditingController(text: widget.equipo['empresa_final']?.toString() ?? '');
+    _puestoFinalController = TextEditingController(text: widget.equipo['puesto_final']?.toString() ?? '');
+    
+    // Campos de t_computo_usuario_responsable
+    _nombreResponsableController = TextEditingController(text: widget.equipo['nombre_responsable']?.toString() ?? '');
+    _apellidoPaternoResponsableController = TextEditingController(text: widget.equipo['apellido_paterno_responsable']?.toString() ?? '');
+    _apellidoMaternoResponsableController = TextEditingController(text: widget.equipo['apellido_materno_responsable']?.toString() ?? '');
+    _expedienteResponsableController = TextEditingController(text: widget.equipo['expediente_responsable']?.toString() ?? '');
+    _empresaResponsableController = TextEditingController(text: widget.equipo['empresa_responsable']?.toString() ?? '');
+    _puestoResponsableController = TextEditingController(text: widget.equipo['puesto_responsable']?.toString() ?? '');
+    
+    // Campos de t_computo_observaciones
     _observacionesController = TextEditingController(text: widget.equipo['observaciones']?.toString() ?? '');
   }
 
   @override
   void dispose() {
+    // Campos de t_computo_detalles_generales
+    _inventarioController.dispose();
     _tipoEquipoController.dispose();
     _marcaController.dispose();
     _modeloController.dispose();
@@ -3199,11 +3633,73 @@ class _EquipoDialogState extends State<_EquipoDialog> {
     _numeroSerieController.dispose();
     _discoDuroController.dispose();
     _memoriaController.dispose();
+    
+    // Campos de t_computo_software
     _sistemaOperativoController.dispose();
+    _etiquetaSoController.dispose();
     _officeInstaladoController.dispose();
+    
+    // Campos de t_computo_identificacion
+    _tipoUsoController.dispose();
+    _nombreEquipoDominioController.dispose();
+    _statusController.dispose();
+    _direccionAdministrativaController.dispose();
+    _subdireccionController.dispose();
+    _gerenciaController.dispose();
+    
+    // Campos de t_computo_ubicacion
     _direccionFisicaController.dispose();
+    _estadoController.dispose();
+    _ciudadController.dispose();
+    _tipoEdificioController.dispose();
+    _nombreEdificioController.dispose();
+    
+    // Campos de t_computo_usuario_final
+    _nombreFinalController.dispose();
+    _apellidoPaternoFinalController.dispose();
+    _apellidoMaternoFinalController.dispose();
+    _expedienteFinalController.dispose();
+    _empresaFinalController.dispose();
+    _puestoFinalController.dispose();
+    
+    // Campos de t_computo_usuario_responsable
+    _nombreResponsableController.dispose();
+    _apellidoPaternoResponsableController.dispose();
+    _apellidoMaternoResponsableController.dispose();
+    _expedienteResponsableController.dispose();
+    _empresaResponsableController.dispose();
+    _puestoResponsableController.dispose();
+    
+    // Campos de t_computo_observaciones
     _observacionesController.dispose();
     super.dispose();
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12, top: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 20,
+            decoration: BoxDecoration(
+              color: const Color(0xFF003366),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF003366),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _rellenarDatosFicticios() {
@@ -3242,6 +3738,9 @@ class _EquipoDialogState extends State<_EquipoDialog> {
       'Centro de Datos - Rack A-12',
       'Oficina Administrativa - Cubículo 15'
     ];
+    final nombres = ['Juan', 'María', 'Carlos', 'Ana', 'Pedro'];
+    final apellidos = ['García', 'López', 'Martínez', 'Rodríguez', 'González'];
+    final empresas = ['TELMEX', 'TELMEX Sucursal', 'TELMEX Central'];
     
     // Seleccionar valores aleatorios
     final random = DateTime.now().millisecondsSinceEpoch;
@@ -3252,6 +3751,9 @@ class _EquipoDialogState extends State<_EquipoDialog> {
     final sistemaOperativo = sistemasOperativos[random % sistemasOperativos.length];
     final office = offices[random % offices.length];
     final ubicacion = ubicaciones[random % ubicaciones.length];
+    final nombre = nombres[random % nombres.length];
+    final apellido = apellidos[random % apellidos.length];
+    final empresa = empresas[random % empresas.length];
     
     // Generar número de serie ficticio
     final numeroSerie = 'SN${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
@@ -3272,8 +3774,16 @@ class _EquipoDialogState extends State<_EquipoDialog> {
       _discoDuroController.text = discoDuro;
       _memoriaController.text = memoria;
       _sistemaOperativoController.text = sistemaOperativo;
+      _etiquetaSoController.text = 'Windows';
       _officeInstaladoController.text = office;
+      _tipoUsoController.text = 'COM';
+      _statusController.text = 'ASIGNADO';
       _direccionFisicaController.text = ubicacion;
+      _estadoController.text = 'Estado de México';
+      _ciudadController.text = 'Ciudad de México';
+      _nombreFinalController.text = nombre;
+      _apellidoPaternoFinalController.text = apellido;
+      _empresaFinalController.text = empresa;
       _observacionesController.text = 'Equipo de prueba - Datos ficticios generados automáticamente';
     });
     
@@ -3292,16 +3802,53 @@ class _EquipoDialogState extends State<_EquipoDialog> {
   void _guardar() {
     widget.onSave({
       ...widget.equipo,
+      // Campos de t_computo_detalles_generales
+      'inventario': _inventarioController.text.trim(),
       'tipo_equipo': _tipoEquipoController.text.trim(),
       'marca': _marcaController.text.trim(),
       'modelo': _modeloController.text.trim(),
       'procesador': _procesadorController.text.trim(),
       'numero_serie': _numeroSerieController.text.trim(),
       'disco_duro': _discoDuroController.text.trim(),
-      'memoria': _memoriaController.text.trim(),
+      'memoria_ram': _memoriaController.text.trim(),
+      
+      // Campos de t_computo_software
       'sistema_operativo_instalado': _sistemaOperativoController.text.trim(),
+      'etiqueta_sistema_operativo': _etiquetaSoController.text.trim(),
       'office_instalado': _officeInstaladoController.text.trim(),
+      
+      // Campos de t_computo_identificacion
+      'tipo_uso': _tipoUsoController.text.trim(),
+      'nombre_equipo_dominio': _nombreEquipoDominioController.text.trim(),
+      'status': _statusController.text.trim(),
+      'direccion_administrativa': _direccionAdministrativaController.text.trim(),
+      'subdireccion': _subdireccionController.text.trim(),
+      'gerencia': _gerenciaController.text.trim(),
+      
+      // Campos de t_computo_ubicacion
       'direccion_fisica': _direccionFisicaController.text.trim(),
+      'estado_ubicacion': _estadoController.text.trim(),
+      'ciudad': _ciudadController.text.trim(),
+      'tipo_edificio': _tipoEdificioController.text.trim(),
+      'nombre_edificio': _nombreEdificioController.text.trim(),
+      
+      // Campos de t_computo_usuario_final
+      'nombre_final': _nombreFinalController.text.trim(),
+      'apellido_paterno_final': _apellidoPaternoFinalController.text.trim(),
+      'apellido_materno_final': _apellidoMaternoFinalController.text.trim(),
+      'expediente_final': _expedienteFinalController.text.trim(),
+      'empresa_final': _empresaFinalController.text.trim(),
+      'puesto_final': _puestoFinalController.text.trim(),
+      
+      // Campos de t_computo_usuario_responsable
+      'nombre_responsable': _nombreResponsableController.text.trim(),
+      'apellido_paterno_responsable': _apellidoPaternoResponsableController.text.trim(),
+      'apellido_materno_responsable': _apellidoMaternoResponsableController.text.trim(),
+      'expediente_responsable': _expedienteResponsableController.text.trim(),
+      'empresa_responsable': _empresaResponsableController.text.trim(),
+      'puesto_responsable': _puestoResponsableController.text.trim(),
+      
+      // Campos de t_computo_observaciones
       'observaciones': _observacionesController.text.trim(),
     });
     Navigator.pop(context);
@@ -3333,14 +3880,26 @@ class _EquipoDialogState extends State<_EquipoDialog> {
                   ),
                 ),
               ),
+            // Sección: Información General del Equipo
+            _buildSectionTitle('Información General del Equipo'),
+            TextField(
+              controller: _inventarioController,
+              decoration: InputDecoration(
+                labelText: 'Inventario',
+                prefixIcon: const Icon(Icons.inventory_2, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+              enabled: !isNuevoEquipo, // Solo editable si es edición
+            ),
+            const SizedBox(height: 16),
             TextField(
               controller: _tipoEquipoController,
               decoration: InputDecoration(
-                labelText: 'Tipo de Equipo',
+                labelText: 'Tipo de Equipo *',
                 prefixIcon: const Icon(Icons.category, color: Color(0xFF003366)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
                 fillColor: Colors.white,
               ),
@@ -3351,9 +3910,7 @@ class _EquipoDialogState extends State<_EquipoDialog> {
               decoration: InputDecoration(
                 labelText: 'Marca',
                 prefixIcon: const Icon(Icons.branding_watermark, color: Color(0xFF003366)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
                 fillColor: Colors.white,
               ),
@@ -3364,9 +3921,7 @@ class _EquipoDialogState extends State<_EquipoDialog> {
               decoration: InputDecoration(
                 labelText: 'Modelo',
                 prefixIcon: const Icon(Icons.model_training, color: Color(0xFF003366)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
                 fillColor: Colors.white,
               ),
@@ -3377,9 +3932,7 @@ class _EquipoDialogState extends State<_EquipoDialog> {
               decoration: InputDecoration(
                 labelText: 'Procesador',
                 prefixIcon: const Icon(Icons.memory, color: Color(0xFF003366)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
                 fillColor: Colors.white,
               ),
@@ -3390,9 +3943,7 @@ class _EquipoDialogState extends State<_EquipoDialog> {
               decoration: InputDecoration(
                 labelText: 'Número de Serie',
                 prefixIcon: const Icon(Icons.qr_code, color: Color(0xFF003366)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
                 fillColor: Colors.white,
               ),
@@ -3403,9 +3954,7 @@ class _EquipoDialogState extends State<_EquipoDialog> {
               decoration: InputDecoration(
                 labelText: 'Disco Duro',
                 prefixIcon: const Icon(Icons.storage, color: Color(0xFF003366)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
                 fillColor: Colors.white,
               ),
@@ -3414,24 +3963,34 @@ class _EquipoDialogState extends State<_EquipoDialog> {
             TextField(
               controller: _memoriaController,
               decoration: InputDecoration(
-                labelText: 'Memoria',
+                labelText: 'Memoria RAM',
                 prefixIcon: const Icon(Icons.ramp_right, color: Color(0xFF003366)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            
+            // Sección: Software
+            const SizedBox(height: 24),
+            _buildSectionTitle('Software'),
+            TextField(
+              controller: _sistemaOperativoController,
+              decoration: InputDecoration(
+                labelText: 'Sistema Operativo Instalado',
+                prefixIcon: const Icon(Icons.desktop_windows, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
                 fillColor: Colors.white,
               ),
             ),
             const SizedBox(height: 16),
             TextField(
-              controller: _sistemaOperativoController,
+              controller: _etiquetaSoController,
               decoration: InputDecoration(
-                labelText: 'Sistema Operativo Instalado',
-                prefixIcon: const Icon(Icons.desktop_windows, color: Color(0xFF003366)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                labelText: 'Etiqueta Sistema Operativo',
+                prefixIcon: const Icon(Icons.label, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
                 fillColor: Colors.white,
               ),
@@ -3442,35 +4001,286 @@ class _EquipoDialogState extends State<_EquipoDialog> {
               decoration: InputDecoration(
                 labelText: 'Office Instalado',
                 prefixIcon: const Icon(Icons.description, color: Color(0xFF003366)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            
+            // Sección: Identificación
+            const SizedBox(height: 24),
+            _buildSectionTitle('Identificación'),
+            TextField(
+              controller: _tipoUsoController,
+              decoration: InputDecoration(
+                labelText: 'Tipo de Uso',
+                prefixIcon: const Icon(Icons.work, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
                 fillColor: Colors.white,
               ),
             ),
             const SizedBox(height: 16),
             TextField(
-              controller: _direccionFisicaController,
+              controller: _nombreEquipoDominioController,
               decoration: InputDecoration(
-                labelText: 'Ubicación',
-                prefixIcon: const Icon(Icons.location_on, color: Color(0xFF003366)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                labelText: 'Nombre Equipo/Dominio',
+                prefixIcon: const Icon(Icons.dns, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
                 fillColor: Colors.white,
               ),
             ),
             const SizedBox(height: 16),
+            TextField(
+              controller: _statusController,
+              decoration: InputDecoration(
+                labelText: 'Status',
+                prefixIcon: const Icon(Icons.info, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _direccionAdministrativaController,
+              decoration: InputDecoration(
+                labelText: 'Dirección Administrativa',
+                prefixIcon: const Icon(Icons.business, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _subdireccionController,
+              decoration: InputDecoration(
+                labelText: 'Subdirección',
+                prefixIcon: const Icon(Icons.business_center, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _gerenciaController,
+              decoration: InputDecoration(
+                labelText: 'Gerencia',
+                prefixIcon: const Icon(Icons.corporate_fare, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            
+            // Sección: Ubicación
+            const SizedBox(height: 24),
+            _buildSectionTitle('Ubicación'),
+            TextField(
+              controller: _direccionFisicaController,
+              decoration: InputDecoration(
+                labelText: 'Dirección Física',
+                prefixIcon: const Icon(Icons.location_on, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _estadoController,
+              decoration: InputDecoration(
+                labelText: 'Estado',
+                prefixIcon: const Icon(Icons.map, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _ciudadController,
+              decoration: InputDecoration(
+                labelText: 'Ciudad',
+                prefixIcon: const Icon(Icons.location_city, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _tipoEdificioController,
+              decoration: InputDecoration(
+                labelText: 'Tipo de Edificio',
+                prefixIcon: const Icon(Icons.apartment, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _nombreEdificioController,
+              decoration: InputDecoration(
+                labelText: 'Nombre del Edificio',
+                prefixIcon: const Icon(Icons.apartment, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            
+            // Sección: Usuario Final
+            const SizedBox(height: 24),
+            _buildSectionTitle('Usuario Final'),
+            TextField(
+              controller: _nombreFinalController,
+              decoration: InputDecoration(
+                labelText: 'Nombre *',
+                prefixIcon: const Icon(Icons.person, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _apellidoPaternoFinalController,
+              decoration: InputDecoration(
+                labelText: 'Apellido Paterno',
+                prefixIcon: const Icon(Icons.badge, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _apellidoMaternoFinalController,
+              decoration: InputDecoration(
+                labelText: 'Apellido Materno',
+                prefixIcon: const Icon(Icons.badge_outlined, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _expedienteFinalController,
+              decoration: InputDecoration(
+                labelText: 'Expediente',
+                prefixIcon: const Icon(Icons.assignment_ind, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _empresaFinalController,
+              decoration: InputDecoration(
+                labelText: 'Empresa *',
+                prefixIcon: const Icon(Icons.business, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _puestoFinalController,
+              decoration: InputDecoration(
+                labelText: 'Puesto',
+                prefixIcon: const Icon(Icons.work_outline, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            
+            // Sección: Usuario Responsable
+            const SizedBox(height: 24),
+            _buildSectionTitle('Usuario Responsable'),
+            TextField(
+              controller: _nombreResponsableController,
+              decoration: InputDecoration(
+                labelText: 'Nombre Responsable',
+                prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _apellidoPaternoResponsableController,
+              decoration: InputDecoration(
+                labelText: 'Apellido Paterno Responsable',
+                prefixIcon: const Icon(Icons.badge, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _apellidoMaternoResponsableController,
+              decoration: InputDecoration(
+                labelText: 'Apellido Materno Responsable',
+                prefixIcon: const Icon(Icons.badge_outlined, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _expedienteResponsableController,
+              decoration: InputDecoration(
+                labelText: 'Expediente Responsable',
+                prefixIcon: const Icon(Icons.assignment_ind, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _empresaResponsableController,
+              decoration: InputDecoration(
+                labelText: 'Empresa Responsable',
+                prefixIcon: const Icon(Icons.business, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _puestoResponsableController,
+              decoration: InputDecoration(
+                labelText: 'Puesto Responsable',
+                prefixIcon: const Icon(Icons.work_outline, color: Color(0xFF003366)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            
+            // Sección: Observaciones
+            const SizedBox(height: 24),
+            _buildSectionTitle('Observaciones'),
             TextField(
               controller: _observacionesController,
               decoration: InputDecoration(
                 labelText: 'Observaciones',
                 prefixIcon: const Icon(Icons.note, color: Color(0xFF003366)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
                 fillColor: Colors.white,
               ),

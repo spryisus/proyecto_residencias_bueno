@@ -89,11 +89,11 @@ class _InventoryTypeSelectionScreenState extends State<InventoryTypeSelectionScr
         }
       }
       
-      // Contar equipos de cómputo directamente desde t_equipos_computo
+      // Contar equipos de cómputo desde t_computo_equipos_principales (equipos principales)
       try {
         final equiposComputo = await supabaseClient
-            .from('t_equipos_computo')
-            .select('inventario');
+            .from('t_computo_equipos_principales')
+            .select('id_equipo_principal');
         countMap['Equipo de Cómputo'] = equiposComputo.length;
       } catch (e) {
         debugPrint('Error al contar equipos de cómputo: $e');
@@ -337,7 +337,7 @@ class _InventoryTypeSelectionScreenState extends State<InventoryTypeSelectionScr
                         const SizedBox(height: 16),
                         _buildInventoryTypeCard(
                           title: 'Equipo de Cómputo',
-                          description: 'Computadoras, servidores y equipos de cómputo',
+                          description: 'Equipos de cómputo y accesorios',
                           icon: Icons.computer,
                           color: Colors.purple,
                           productCount: _categoryCounts['Equipo de Cómputo'] ?? 0,

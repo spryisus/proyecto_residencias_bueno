@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS public.t_computo_usuario_final (
     nombre TEXT NOT NULL,
     empresa TEXT NOT NULL,
     puesto TEXT,
-    activo BOOLEAN NOT NULL DEFAULT true,
     creado_en TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     actualizado_en TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     CONSTRAINT fk_equipo_computo_usuario_final 
@@ -82,7 +81,4 @@ ON public.t_computo_usuario_final(id_equipo_computo);
 -- Crear índice para búsquedas rápidas
 CREATE INDEX IF NOT EXISTS idx_computo_usuario_final_nombre 
 ON public.t_computo_usuario_final(nombre, apellido_paterno, apellido_materno);
-
-CREATE INDEX IF NOT EXISTS idx_computo_usuario_final_activo 
-ON public.t_computo_usuario_final(activo);
 

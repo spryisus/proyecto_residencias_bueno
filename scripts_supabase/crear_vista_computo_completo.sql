@@ -2,12 +2,12 @@
 -- Esta vista facilita las consultas combinando todos los apartados
 
 CREATE OR REPLACE VIEW public.v_equipos_computo_completo AS
-SELECT 
+SELECT DISTINCT ON (ep.id_equipo_principal)
     -- Equipo Principal
     ep.id_equipo_principal,
     ep.equipo_pm,
     
-    -- Detalles Generales (Componentes)
+    -- Detalles Generales (Componentes) - Solo el primer componente del equipo principal
     dg.id_equipo_computo,
     dg.inventario,
     dg.fecha_registro,
@@ -50,7 +50,6 @@ SELECT
     ur.nombre AS nombre_responsable,
     ur.empresa AS empresa_responsable,
     ur.puesto AS puesto_responsable,
-    ur.activo AS responsable_activo,
     
     -- Usuario Final
     uf.id_usuario_final,
@@ -60,26 +59,36 @@ SELECT
     uf.nombre AS nombre_final,
     uf.empresa AS empresa_final,
     uf.puesto AS puesto_final,
-    uf.activo AS final_activo,
+    -- Campo combinado para mostrar nombre completo del usuario final
+    TRIM(
+      CONCAT(
+        COALESCE(uf.nombre, ''),
+        ' ',
+        COALESCE(uf.apellido_paterno, ''),
+        ' ',
+        COALESCE(uf.apellido_materno, '')
+      )
+    ) AS empleado_asignado_nombre,
     
     -- Observaciones
     obs.observaciones
     
 FROM public.t_computo_equipos_principales ep
-INNER JOIN public.t_computo_detalles_generales dg 
-    ON ep.id_equipo_principal = dg.id_equipo_principal
+LEFT JOIN public.t_computo_detalles_generales dg 
+    ON dg.equipo_pm = ep.id_equipo_principal
 LEFT JOIN public.t_computo_software sw 
     ON dg.id_equipo_computo = sw.id_equipo_computo
 LEFT JOIN public.t_computo_ubicacion ub 
     ON dg.id_ubicacion = ub.id_ubicacion
 LEFT JOIN public.t_computo_identificacion id 
-    ON dg.id_equipo_computo = id.id_equipo_computo
+    ON dg.id_equipo_computo::TEXT = id.id_equipo_computo::TEXT
 LEFT JOIN public.t_computo_usuario_responsable ur 
     ON dg.id_usuario_responsable = ur.id_usuario_responsable
 LEFT JOIN public.t_computo_usuario_final uf 
-    ON dg.id_equipo_computo = uf.id_equipo_computo
+    ON dg.id_equipo_computo::TEXT = uf.id_equipo_computo::TEXT
 LEFT JOIN public.t_computo_observaciones obs 
-    ON dg.id_equipo_computo = obs.id_equipo_computo;
+    ON dg.id_equipo_computo::TEXT = obs.id_equipo_computo
+ORDER BY ep.id_equipo_principal, dg.id_equipo_computo;
 
 -- Comentarios para documentación
 COMMENT ON VIEW public.v_equipos_computo_completo IS 
