@@ -9,6 +9,8 @@ import '../auth/login_screen.dart';
 import '../inventory/inventory_screen.dart';
 import '../inventory/inventory_type_selection_screen.dart';
 import '../inventory/completed_inventories_screen.dart';
+import '../inventory/completed_inventory_detail_screen.dart';
+import '../../domain/entities/categoria.dart';
 import '../shipments/shipments_screen.dart';
 import '../shipments/active_shipments_screen.dart';
 import '../sdr/solicitud_sdr_screen.dart';
@@ -167,25 +169,62 @@ class _AdminDashboardState extends State<AdminDashboard> {
     });
   }
 
-  void _openSession(InventorySession session) {
-    showDialog(
-      context: context,
-      builder: (context) => _SessionDetailDialog(
-        session: session,
-        formatDate: _formatDate,
-      ),
-    );
+  Future<void> _openSession(InventorySession session) async {
+    try {
+      final InventarioRepository _inventarioRepository = serviceLocator.get<InventarioRepository>();
+      
+      // Obtener la categoría para mostrar los detalles
+      Categoria? categoria;
+      
+      // Si es inventario de cómputo (categoryId == -1), crear una categoría dummy
+      if (session.categoryId == -1) {
+        categoria = Categoria(
+          idCategoria: -1,
+          nombre: 'Equipo de Cómputo',
+          descripcion: 'Equipos de cómputo',
+        );
+      } else {
+        // Obtener la categoría de la base de datos
+        categoria = await _inventarioRepository.getCategoriaById(session.categoryId);
+      }
+      
+      if (categoria == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('La categoría asociada ya no existe'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Mostrar los detalles de la sesión sin redirigir al inventario
+      if (mounted) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CompletedInventoryDetailScreen(
+              session: session,
+              categoria: categoria!,
+            ),
+          ),
+        );
+        // Recargar sesiones al volver
+        await _loadSessions();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al mostrar detalles: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
-  String _formatDate(DateTime date) {
-    final local = date.toLocal();
-    final day = local.day.toString().padLeft(2, '0');
-    final month = local.month.toString().padLeft(2, '0');
-    final year = local.year;
-    final hour = local.hour.toString().padLeft(2, '0');
-    final minute = local.minute.toString().padLeft(2, '0');
-    return '$day/$month/$year $hour:$minute';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -264,7 +303,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         ],
       ),
       child: Container(
-        height: isMobile ? 60 : 70,
+        height: isMobile ? 70 : 70,
         padding: EdgeInsets.symmetric(
           horizontal: isMobile ? 12 : 24,
           vertical: isMobile ? 8 : 12,
@@ -291,36 +330,47 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   ),
                   SizedBox(width: MediaQuery.of(context).size.width < 600 ? 8 : 12),
                   Flexible(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                      Text(
-                        'Gestor de Refacciones y Envios',
-                        style: TextStyle(
-                          fontSize: MediaQuery.of(context).size.width < 600 ? 16 : 22,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF003366),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (MediaQuery.of(context).size.width >= 600)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text(
-                            'Sistema de Larga Distancia',
+                    child: isMobile
+                        ? Text(
+                            'Gestor de Refacciones y Envios',
                             style: TextStyle(
                               fontSize: 14,
-                              color: Colors.grey[600],
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFF003366),
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
+                          )
+                        : FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Gestor de Refacciones y Envios',
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF003366),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  'Sistema de Larga Distancia',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
                   ),
                 ],
               ),
@@ -375,30 +425,34 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 ),
                 const SizedBox(width: 12),
                 Flexible(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _userName ?? 'Usuario',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _userName ?? 'Usuario',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        _userRole ?? 'Usuario',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
+                        Text(
+                          _userRole ?? 'Usuario',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -556,26 +610,54 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     ),
                   ],
                 ),
-                // Sección SESIONES GUARDADAS
-                if (_sessions.isNotEmpty)
-                  _buildDrawerSection(
-                    context,
-                    'SESIONES GUARDADAS',
-                    _sessions.take(2).map((session) {
-                      final isPending = session.status == InventorySessionStatus.pending;
-                      return _buildDrawerItem(
-                        context,
-                        icon: isPending ? Icons.pause_circle_outline : Icons.check_circle_outline,
-                        title: session.categoryName,
-                        subtitle: _formatTimeAgo(session.updatedAt),
-                        iconColor: isPending ? Colors.orange : Colors.green,
-                        onTap: () {
-                          Navigator.pop(context);
-                          _openSession(session);
-                        },
-                      );
-                    }).toList(),
+                // Sección SESIONES GUARDADAS con contenedor scrollable
+                if (_sessions.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    child: Text(
+                      'SESIONES GUARDADAS',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[600],
+                        letterSpacing: 1.2,
+                      ),
+                    ),
                   ),
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 12),
+                    constraints: const BoxConstraints(maxHeight: 200),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[50],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.grey[200]!,
+                        width: 1,
+                      ),
+                    ),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: _sessions.length,
+                      itemBuilder: (context, index) {
+                        final session = _sessions[index];
+                        final isPending = session.status == InventorySessionStatus.pending;
+                        return _buildDrawerItem(
+                          context,
+                          icon: isPending ? Icons.pause_circle_outline : Icons.check_circle_outline,
+                          title: session.categoryName,
+                          subtitle: _formatTimeAgo(session.updatedAt),
+                          iconColor: isPending ? Colors.orange : Colors.green,
+                          onTap: () {
+                            Navigator.pop(context);
+                            _openSession(session);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ],
             ),
           ),
@@ -696,24 +778,51 @@ class _AdminDashboardState extends State<AdminDashboard> {
               ),
             ],
           ),
-          // Sección SESIONES GUARDADAS
-          if (_sessions.isNotEmpty)
-            _buildSidebarSection(
-              context,
-              'SESIONES GUARDADAS',
-              _sessions.take(2).map((session) {
-                final isPending = session.status == InventorySessionStatus.pending;
-                return _buildSidebarItem(
-                  context,
-                  icon: isPending ? Icons.pause_circle_outline : Icons.check_circle_outline,
-                  title: session.categoryName,
-                  subtitle: _formatTimeAgo(session.updatedAt),
-                  iconColor: isPending ? Colors.orange : Colors.green,
-                  onTap: () => _openSession(session),
-                );
-              }).toList(),
+          // Sección SESIONES GUARDADAS con contenedor scrollable
+          if (_sessions.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Text(
+                'SESIONES GUARDADAS',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[600],
+                  letterSpacing: 1.2,
+                ),
+              ),
             ),
-          const Spacer(),
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.grey[200]!,
+                    width: 1,
+                  ),
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: _sessions.length,
+                  itemBuilder: (context, index) {
+                    final session = _sessions[index];
+                    final isPending = session.status == InventorySessionStatus.pending;
+                    return _buildSidebarItem(
+                      context,
+                      icon: isPending ? Icons.pause_circle_outline : Icons.check_circle_outline,
+                      title: session.categoryName,
+                      subtitle: _formatTimeAgo(session.updatedAt),
+                      iconColor: isPending ? Colors.orange : Colors.green,
+                      onTap: () => _openSession(session),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
           // Cerrar Sesión
           Padding(
             padding: const EdgeInsets.all(16.0),
@@ -1047,7 +1156,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isMobile = constraints.maxWidth < 600;
-        final crossAxisCount = isMobile ? 2 : 4;
+        final crossAxisCount = isMobile ? 2 : 4; // 4 columnas en desktop para las 4 tarjetas
         
         return GridView.count(
           shrinkWrap: true,
@@ -1055,7 +1164,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           crossAxisCount: crossAxisCount,
           crossAxisSpacing: isMobile ? 8 : 16,
           mainAxisSpacing: isMobile ? 8 : 16,
-          childAspectRatio: isMobile ? 1.0 : 1.3,
+          childAspectRatio: isMobile ? 1.0 : 1.4, // Ajustado para 4 columnas
           padding: EdgeInsets.all(isMobile ? 8 : 16),
           children: [
             _buildStatCard(
@@ -1083,7 +1192,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
               icon: Icons.pending_outlined,
               title: 'Inventarios pendientes',
               value: _pendingInventarios.toString(),
-              badge: _pendingInventarios.toString(),
+              badge: _pendingInventarios > 0 ? _pendingInventarios.toString() : null,
               badgeColor: Colors.orange,
               iconColor: Colors.orange,
               onTap: () async {
@@ -1117,12 +1226,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 }
               },
             ),
+            // Tarjeta adicional solo para administradores
             _buildStatCard(
               context,
               icon: Icons.group,
               title: 'Usuarios Activos',
               value: _activeUsers.toString(),
-              badge: _activeUsers.toString(),
+              badge: _activeUsers > 0 ? _activeUsers.toString() : null,
               badgeColor: Colors.purple,
               iconColor: Colors.purple,
               onTap: () {
@@ -1159,7 +1269,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           child: Padding(
             padding: EdgeInsets.symmetric(
               horizontal: isMobile ? 10 : 20,
-              vertical: isMobile ? 12 : 16,
+              vertical: isMobile ? 8 : 12,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1170,12 +1280,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Container(
-                      padding: EdgeInsets.all(isMobile ? 8 : 16),
+                      padding: EdgeInsets.all(isMobile ? 6 : 12),
                       decoration: BoxDecoration(
                         color: iconColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Icon(icon, color: iconColor, size: isMobile ? 32 : 56),
+                      child: Icon(icon, color: iconColor, size: isMobile ? 28 : 48),
                     ),
                     if (badge != null)
                       Container(
@@ -1199,32 +1309,43 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   ],
                 ),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SizedBox(height: isMobile ? 4 : 8),
-                      Text(
-                        value,
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          fontSize: isMobile ? 28 : 36,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                          child: IntrinsicHeight(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  value,
+                                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: isMobile ? 22 : 30,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                                Text(
+                                  title,
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: Colors.grey[600],
+                                    fontSize: isMobile ? 10 : 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 2,
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      ),
-                      SizedBox(height: isMobile ? 2 : 4),
-                      Text(
-                        title,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[600],
-                          fontSize: isMobile ? 14 : 16,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 2,
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 ),
               ],
@@ -1237,155 +1358,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
 
 }
-
-
-class _SessionDetailDialog extends StatefulWidget {
-  final InventorySession session;
-  final String Function(DateTime) formatDate;
-
-  const _SessionDetailDialog({
-    required this.session,
-    required this.formatDate,
-  });
-
-  @override
-  State<_SessionDetailDialog> createState() => _SessionDetailDialogState();
-}
-
-class _SessionDetailDialogState extends State<_SessionDetailDialog> {
-  final InventarioRepository _inventarioRepository = serviceLocator.get<InventarioRepository>();
-  Map<int, String> _productNames = {};
-  bool _isLoadingNames = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadProductNames();
-  }
-
-  Future<void> _loadProductNames() async {
-    try {
-      final Map<int, String> names = {};
-      
-      // Cargar nombres y tamaños de todos los productos en la sesión
-      for (final productId in widget.session.quantities.keys) {
-        try {
-          final producto = await _inventarioRepository.getProductoById(productId);
-          if (producto != null) {
-            // Formatear nombre con tamaño si está disponible
-            String displayName = producto.nombre;
-            if (producto.tamano != null) {
-              displayName = '$displayName - ${producto.tamano} m';
-            }
-            names[productId] = displayName;
-          } else {
-            names[productId] = 'Producto ID #$productId (no encontrado)';
-          }
-        } catch (e) {
-          names[productId] = 'Producto ID #$productId (error al cargar)';
-        }
-      }
-      
-      if (mounted) {
-        setState(() {
-          _productNames = names;
-          _isLoadingNames = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoadingNames = false;
-          // Si falla, usar IDs como fallback
-          _productNames = {
-            for (final id in widget.session.quantities.keys)
-              id: 'Producto ID #$id'
-          };
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Detalles del inventario'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildInfoRow('Categoría', widget.session.categoryName, context),
-            const SizedBox(height: 8),
-            _buildInfoRow('Estado', widget.session.status == InventorySessionStatus.pending ? 'Pendiente' : 'Terminado', context),
-            const SizedBox(height: 8),
-            _buildInfoRow('Última actualización', widget.formatDate(widget.session.updatedAt), context),
-            const SizedBox(height: 8),
-            if (widget.session.ownerEmail != null && widget.session.ownerEmail!.isNotEmpty)
-              _buildInfoRow('Empleado', widget.session.ownerEmail!, context),
-            if (widget.session.ownerName != null && widget.session.ownerName != widget.session.ownerEmail)
-              _buildInfoRow('Responsable', widget.session.ownerName!, context),
-            const SizedBox(height: 16),
-            Text(
-              'Productos capturados (${widget.session.quantities.length})',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 200,
-              child: _isLoadingNames
-                  ? const Center(child: CircularProgressIndicator())
-                  : ListView(
-                      children: widget.session.quantities.entries.map((entry) {
-                        final productName = _productNames[entry.key] ?? 'Producto ID #${entry.key}';
-                        return ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(productName),
-                          trailing: Text(
-                            '${entry.value}',
-                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cerrar'),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value, BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '$label: ',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class UserActivityPage extends StatelessWidget {
   const UserActivityPage({super.key});
 

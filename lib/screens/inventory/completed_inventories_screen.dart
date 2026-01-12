@@ -53,11 +53,40 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
   Set<String> _selectedSessionIds = {}; // IDs de sesiones seleccionadas para exportar
   bool _isSelectionMode = false; // Modo de selección múltiple
   bool _filtersExpanded = true; // Estado de expansión de los filtros
+  bool _isAdmin = false; // Si el usuario es administrador
+  String? _currentUserId; // ID del usuario actual
 
   @override
   void initState() {
     super.initState();
     _loadAllSessions();
+    _loadUserInfo();
+  }
+
+  Future<void> _loadUserInfo() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final idEmpleado = prefs.getString('id_empleado');
+      
+      if (idEmpleado != null) {
+        final roles = await supabaseClient
+            .from('t_empleado_rol')
+            .select('t_roles!inner(nombre)')
+            .eq('id_empleado', idEmpleado);
+        
+        final isAdmin = roles.any((rol) => 
+            rol['t_roles']['nombre']?.toString().toLowerCase() == 'admin');
+        
+        if (mounted) {
+          setState(() {
+            _isAdmin = isAdmin;
+            _currentUserId = idEmpleado;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error al cargar información del usuario: $e');
+    }
   }
 
   Future<void> _loadAllSessions() async {
@@ -227,42 +256,34 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
     debugPrint('   - session.categoryId: ${session.categoryId}');
     debugPrint('   - session.status: ${session.status}');
     
-    // Verificar permisos de admin: solo puede ver detalles de inventarios pendientes de otros usuarios
+    // Verificar permisos de admin: puede ver detalles de inventarios finalizados de cualquier usuario,
+    // pero solo puede ver detalles de inventarios pendientes de otros usuarios (no los suyos propios)
     final isAdmin = await _checkIsAdmin();
+    final prefs = await SharedPreferences.getInstance();
+    final currentUserId = prefs.getString('id_empleado');
+    
     if (isAdmin) {
-      final prefs = await SharedPreferences.getInstance();
-      final currentUserId = prefs.getString('id_empleado');
       
-      // Si el inventario está completado, no permitir ver detalles
+      // Si el inventario está completado, permitir verlo (los admins pueden ver todos los finalizados)
       if (session.status == InventorySessionStatus.completed) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Como administrador, solo puedes ver detalles de inventarios pendientes de otros usuarios'),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 3),
-            ),
-          );
+        // Continuar con el flujo normal para ver detalles
+      } else if (session.status == InventorySessionStatus.pending) {
+        // Si el inventario está pendiente y es del mismo admin, no permitir ver detalles
+        if (session.ownerId == currentUserId) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Como administrador, solo puedes ver detalles de inventarios pendientes de otros usuarios'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
         }
-        return;
+        // Si el inventario está pendiente pero es de otro usuario, permitir verlo
+        // (continuar con el flujo normal)
       }
-      
-      // Si el inventario es del mismo admin, no permitir ver detalles
-      if (session.ownerId == currentUserId) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Como administrador, solo puedes ver detalles de inventarios pendientes de otros usuarios'),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
-        return;
-      }
-      
-      // Si el inventario está pendiente pero no es del admin, permitir verlo
-      // (continuar con el flujo normal)
     }
     
     try {
@@ -284,16 +305,36 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
       if (isSicor) {
         debugPrint('✅ SICOR detectado en _viewInventory');
         if (session.status == InventorySessionStatus.pending) {
-          debugPrint('✅ Redirigiendo a InventarioTarjetasRedScreen (SICOR pendiente)');
-          if (!mounted) return;
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => InventarioTarjetasRedScreen(
-                sessionId: session.id,
+          // Si es admin y el inventario es de otro usuario, mostrar detalles en lugar de redirigir
+          if (isAdmin && session.ownerId != currentUserId) {
+            debugPrint('✅ Admin viendo detalles de inventario SICOR pendiente de otro usuario');
+            // Obtener la categoría para mostrar detalles
+            if (session.categoryId > 0) {
+              final categoria = await _inventarioRepository.getCategoriaById(session.categoryId);
+              if (categoria != null && mounted) {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CompletedInventoryDetailScreen(
+                      session: session,
+                      categoria: categoria,
+                    ),
+                  ),
+                );
+              }
+            }
+          } else {
+            debugPrint('✅ Redirigiendo a InventarioTarjetasRedScreen (SICOR pendiente)');
+            if (!mounted) return;
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => InventarioTarjetasRedScreen(
+                  sessionId: session.id,
+                ),
               ),
-            ),
-          );
+            );
+          }
         } else {
           debugPrint('⚠️ SICOR completado, mostrando detalles');
           // Para SICOR completado, necesitamos obtener la categoría
@@ -328,14 +369,35 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
       
       if (isComputo) {
         if (session.status == InventorySessionStatus.pending) {
-          // Si está pendiente, redirigir a la pantalla de inventario de cómputo
-          if (!mounted) return;
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const InventarioComputoScreen(),
-            ),
-          );
+          // Si es admin y el inventario es de otro usuario, mostrar detalles en lugar de redirigir
+          if (isAdmin && session.ownerId != currentUserId) {
+            debugPrint('✅ Admin viendo detalles de inventario cómputo pendiente de otro usuario');
+            // Crear una categoría dummy para mostrar los detalles
+            final categoriaDummy = Categoria(
+              idCategoria: -1,
+              nombre: 'Equipo de Cómputo',
+              descripcion: 'Equipos de cómputo',
+            );
+            if (!mounted) return;
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CompletedInventoryDetailScreen(
+                  session: session,
+                  categoria: categoriaDummy,
+                ),
+              ),
+            );
+          } else {
+            // Si está pendiente, redirigir a la pantalla de inventario de cómputo
+            if (!mounted) return;
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const InventarioComputoScreen(),
+              ),
+            );
+          }
         } else {
           // Si está completada, mostrar los detalles usando una categoría dummy
           if (!mounted) return;
@@ -399,8 +461,28 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
                                    categoriaNombreLower.contains('medición') ||
                                    categoriaNombreLower.contains('medicion');
 
-      // Si la sesión está pendiente, redirigir al inventario para continuarlo
+      // Si la sesión está pendiente, verificar si es admin viendo inventario de otro usuario
       if (session.status == InventorySessionStatus.pending) {
+        // Si es admin y el inventario es de otro usuario, mostrar detalles en lugar de redirigir
+        if (isAdmin && session.ownerId != currentUserId) {
+          debugPrint('✅ Admin viendo detalles de inventario pendiente de otro usuario');
+          // Mostrar detalles del inventario pendiente
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CompletedInventoryDetailScreen(
+                session: session,
+                categoria: categoria,
+              ),
+            ),
+          );
+          // Recargar sesiones al volver
+          if (mounted) {
+            _loadAllSessions();
+          }
+          return;
+        }
+        
         // Debug: imprimir información de la sesión
         debugPrint('🔍 Sesión pendiente detectada (después de obtener categoría):');
         debugPrint('   - categoryName: ${session.categoryName}');
@@ -1242,6 +1324,8 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
     final statusIcon = isPending ? Icons.pause_circle : Icons.check_circle;
     final isSelected = _selectedSessionIds.contains(session.id);
     final canSelect = !isPending && _isSelectionMode;
+    // Si es admin viendo inventario pendiente de otro usuario, mostrar "Ver detalles" en lugar de "Continuar"
+    final shouldShowViewDetails = isPending && _isAdmin && session.ownerId != _currentUserId;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1385,10 +1469,10 @@ class _CompletedInventoriesScreenState extends State<CompletedInventoriesScreen>
                         _viewInventory(session);
                       },
                       icon: Icon(
-                        isPending ? Icons.play_arrow : Icons.visibility,
+                        shouldShowViewDetails || !isPending ? Icons.visibility : Icons.play_arrow,
                         size: 18,
                       ),
-                      label: Text(isPending ? 'Continuar' : 'Ver detalles'),
+                      label: Text(shouldShowViewDetails || !isPending ? 'Ver detalles' : 'Continuar'),
                       style: TextButton.styleFrom(
                         foregroundColor: const Color(0xFF003366),
                       ),

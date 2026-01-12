@@ -266,60 +266,69 @@ class _CompletedInventoryDetailScreenState extends State<CompletedInventoryDetai
                     return Column(
                       children: [
                         // Header con información del inventario
-                        Container(
-                          width: double.infinity,
-                          padding: EdgeInsets.all(padding),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withValues(alpha: 0.1),
-                            border: Border(
-                              bottom: BorderSide(
-                                color: Colors.green.withValues(alpha: 0.3),
+                        Builder(
+                          builder: (context) {
+                            final isPending = widget.session.status == InventorySessionStatus.pending;
+                            final statusColor = isPending ? Colors.orange : Colors.green;
+                            final statusIcon = isPending ? Icons.pause_circle : Icons.check_circle;
+                            final statusText = isPending 
+                                ? 'Pendiente desde ${_formatDate(widget.session.updatedAt)}'
+                                : 'Finalizado el ${_formatDate(widget.session.updatedAt)}';
+                            
+                            return Container(
+                              width: double.infinity,
+                              padding: EdgeInsets.all(padding),
+                              decoration: BoxDecoration(
+                                color: statusColor.withValues(alpha: 0.1),
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color: statusColor.withValues(alpha: 0.3),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: Colors.green.withValues(alpha: 0.2),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: const Icon(
-                                      Icons.check_circle,
-                                      color: Colors.green,
-                                      size: 28,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          widget.session.categoryName,
-                                          style: TextStyle(
-                                            fontSize: isMobile ? 20 : 24,
-                                            fontWeight: FontWeight.bold,
-                                            color: Theme.of(context).colorScheme.primary,
-                                          ),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: statusColor.withValues(alpha: 0.2),
+                                          borderRadius: BorderRadius.circular(10),
                                         ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          'Finalizado el ${_formatDate(widget.session.updatedAt)}',
-                                          style: TextStyle(
-                                            fontSize: isMobile ? 14 : 16,
-                                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
-                                          ),
+                                        child: Icon(
+                                          statusIcon,
+                                          color: statusColor,
+                                          size: 28,
                                         ),
-                                      ],
-                                    ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              widget.session.categoryName,
+                                              style: TextStyle(
+                                                fontSize: isMobile ? 20 : 24,
+                                                fontWeight: FontWeight.bold,
+                                                color: statusColor,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              statusText,
+                                              style: TextStyle(
+                                                fontSize: isMobile ? 14 : 16,
+                                                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
-                              ),
                               const SizedBox(height: 12),
                               Wrap(
                                 spacing: 12,
@@ -353,6 +362,8 @@ class _CompletedInventoryDetailScreenState extends State<CompletedInventoryDetai
                               ),
                             ],
                           ),
+                            );
+                          },
                         ),
                         // Lista de productos, equipos o tarjetas de red
                         Expanded(

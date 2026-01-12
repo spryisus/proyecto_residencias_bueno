@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../domain/entities/rutina.dart';
 import '../data/local/rutina_storage.dart';
+import '../app/config/supabase_client.dart' show supabaseClient;
 import 'package:intl/intl.dart';
 
 /// Widget para mostrar y gestionar las rutinas
@@ -17,11 +19,38 @@ class _RutinasWidgetState extends State<RutinasWidget> {
   final RutinaStorage _storage = RutinaStorage();
   List<Rutina> _rutinas = [];
   bool _isLoading = true;
+  bool _isAdmin = false;
 
   @override
   void initState() {
     super.initState();
+    _checkAdminStatus();
     _loadRutinas();
+  }
+
+  Future<void> _checkAdminStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final idEmpleado = prefs.getString('id_empleado');
+      
+      if (idEmpleado != null) {
+        final roles = await supabaseClient
+            .from('t_empleado_rol')
+            .select('t_roles!inner(nombre)')
+            .eq('id_empleado', idEmpleado);
+        
+        final isAdmin = roles.any((rol) => 
+            rol['t_roles']['nombre']?.toString().toLowerCase() == 'admin');
+        
+        if (mounted) {
+          setState(() {
+            _isAdmin = isAdmin;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error al verificar rol de admin: $e');
+    }
   }
 
   Future<void> _loadRutinas() async {
@@ -44,6 +73,11 @@ class _RutinasWidgetState extends State<RutinasWidget> {
   Future<void> _updateRutinaFecha(Rutina rutina, DateTime? fecha) async {
     final rutinaActualizada = rutina.copyWith(fechaEstimada: fecha);
     await _storage.updateRutina(rutinaActualizada);
+    await _loadRutinas();
+  }
+
+  Future<void> _deleteRutinaFecha(Rutina rutina) async {
+    await _storage.deleteRutinaFecha(rutina.id);
     await _loadRutinas();
   }
 
@@ -130,24 +164,68 @@ class _RutinasWidgetState extends State<RutinasWidget> {
               ],
             ),
           ),
-          // Botón para seleccionar fecha
-          IconButton(
-            icon: const Icon(Icons.calendar_today, size: 18),
-            onPressed: () async {
-              final fecha = await showDatePicker(
-                context: context,
-                initialDate: rutina.fechaEstimada ?? DateTime.now(),
-                firstDate: DateTime.now(),
-                lastDate: DateTime.now().add(const Duration(days: 365)),
-                locale: const Locale('es', 'ES'),
-              );
-              
-              if (fecha != null) {
-                await _updateRutinaFecha(rutina, fecha);
-              }
-            },
-            tooltip: 'Asignar fecha',
-          ),
+          // Botones para gestionar fecha (solo para administradores)
+          if (_isAdmin)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Botón para editar/seleccionar fecha
+                IconButton(
+                  icon: Icon(
+                    rutina.fechaEstimada != null ? Icons.edit : Icons.calendar_today,
+                    size: 18,
+                  ),
+                  onPressed: () async {
+                    final fecha = await showDatePicker(
+                      context: context,
+                      initialDate: rutina.fechaEstimada ?? DateTime.now(),
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                      locale: const Locale('es', 'ES'),
+                    );
+                    
+                    if (fecha != null) {
+                      await _updateRutinaFecha(rutina, fecha);
+                    }
+                  },
+                  tooltip: rutina.fechaEstimada != null ? 'Editar fecha' : 'Asignar fecha',
+                ),
+                // Botón para eliminar fecha (solo si tiene fecha)
+                if (rutina.fechaEstimada != null)
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    onPressed: () async {
+                      // Mostrar diálogo de confirmación
+                      final confirmar = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Eliminar fecha'),
+                          content: Text('¿Estás seguro de que deseas eliminar la fecha de "${rutina.nombre}"?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancelar'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.red,
+                              ),
+                              child: const Text('Eliminar'),
+                            ),
+                          ],
+                        ),
+                      );
+                      
+                      if (confirmar == true) {
+                        await _deleteRutinaFecha(rutina);
+                      }
+                    },
+                    tooltip: 'Eliminar fecha',
+                    color: Colors.red,
+                  ),
+              ],
+            ),
         ],
       ),
     );

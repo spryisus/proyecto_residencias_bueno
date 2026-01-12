@@ -707,8 +707,9 @@ class _WelcomePageState extends State<WelcomePage> {
 
   Widget _buildHeader(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 600;
+    final topPadding = MediaQuery.of(context).padding.top;
     return Container(
-      height: isMobile ? 70 : 70,
+      padding: EdgeInsets.only(top: topPadding),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
@@ -719,65 +720,78 @@ class _WelcomePageState extends State<WelcomePage> {
           ),
         ],
       ),
-      padding: EdgeInsets.only(
-        top: isMobile ? MediaQuery.of(context).padding.top + 8 : 12,
-        bottom: 12,
-        left: isMobile ? 12 : 24,
-        right: isMobile ? 12 : 24,
-      ),
-      child: Row(
-        children: [
-          // Logo y título
-          Expanded(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: MediaQuery.of(context).size.width < 600 ? 32 : 40,
-                  height: MediaQuery.of(context).size.width < 600 ? 32 : 40,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF003366),
-                    borderRadius: BorderRadius.circular(8),
+      child: Container(
+        height: isMobile ? 70 : 70,
+        padding: EdgeInsets.symmetric(
+          horizontal: isMobile ? 12 : 24,
+          vertical: isMobile ? 8 : 12,
+        ),
+        child: Row(
+          children: [
+            // Logo y título
+            Expanded(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: MediaQuery.of(context).size.width < 600 ? 32 : 40,
+                    height: MediaQuery.of(context).size.width < 600 ? 32 : 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF003366),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.inventory_2,
+                      color: Colors.white,
+                      size: MediaQuery.of(context).size.width < 600 ? 20 : 24,
+                    ),
                   ),
-                  child: Icon(
-                    Icons.inventory_2,
-                    color: Colors.white,
-                    size: MediaQuery.of(context).size.width < 600 ? 20 : 24,
-                  ),
-                ),
-                SizedBox(width: MediaQuery.of(context).size.width < 600 ? 8 : 12),
-                Flexible(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Gestor de Refacciones y Envios',
-                        style: TextStyle(
-                          fontSize: MediaQuery.of(context).size.width < 600 ? 13 : 18,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF003366),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (MediaQuery.of(context).size.width >= 600)
-                        Text(
-                          'Sistema de Larga Distancia',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
+                  SizedBox(width: MediaQuery.of(context).size.width < 600 ? 8 : 12),
+                  Flexible(
+                    child: isMobile
+                        ? Text(
+                            'Gestor de Refacciones y Envios',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFF003366),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Gestor de Refacciones y Envios',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: const Color(0xFF003366),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  'Sistema de Larga Distancia',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                    ],
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
           if (MediaQuery.of(context).size.width >= 600) const Spacer(),
           // Iconos de acción
           IconButton(
@@ -817,35 +831,39 @@ class _WelcomePageState extends State<WelcomePage> {
                 ),
                 const SizedBox(width: 12),
                 Flexible(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _userName ?? 'Usuario',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _userName ?? 'Usuario',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        _userRole ?? 'Usuario',
-                        style: TextStyle(
-                          fontSize: 12,
+                        Text(
+                          _userRole ?? 'Usuario',
+                          style: TextStyle(
+                            fontSize: 12,
                           color: Colors.grey[600],
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
+                    ),
                   ),
                 ),
               ],
-            )
-          else
+            ),
+          if (MediaQuery.of(context).size.width < 600)
             CircleAvatar(
               radius: 18,
               backgroundColor: const Color(0xFF003366),
@@ -859,6 +877,7 @@ class _WelcomePageState extends State<WelcomePage> {
               ),
             ),
         ],
+        ),
       ),
     );
   }
@@ -980,26 +999,54 @@ class _WelcomePageState extends State<WelcomePage> {
                     ),
                   ],
                 ),
-                // Sección SESIONES GUARDADAS
-                if (_sessions.isNotEmpty)
-                  _buildDrawerSection(
-                    context,
-                    'SESIONES GUARDADAS',
-                    _sessions.take(2).map((session) {
-                      final isPending = session.status == InventorySessionStatus.pending;
-                      return _buildDrawerItem(
-                        context,
-                        icon: isPending ? Icons.pause_circle_outline : Icons.check_circle_outline,
-                        title: session.categoryName,
-                        subtitle: _formatTimeAgo(session.updatedAt),
-                        iconColor: isPending ? Colors.orange : Colors.green,
-                        onTap: () {
-                          Navigator.pop(context);
-                          _openSession(session);
-                        },
-                      );
-                    }).toList(),
+                // Sección SESIONES GUARDADAS con contenedor scrollable
+                if (_sessions.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    child: Text(
+                      'SESIONES GUARDADAS',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[600],
+                        letterSpacing: 1.2,
+                      ),
+                    ),
                   ),
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 12),
+                    constraints: const BoxConstraints(maxHeight: 200),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[50],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.grey[200]!,
+                        width: 1,
+                      ),
+                    ),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: _sessions.length,
+                      itemBuilder: (context, index) {
+                        final session = _sessions[index];
+                        final isPending = session.status == InventorySessionStatus.pending;
+                        return _buildDrawerItem(
+                          context,
+                          icon: isPending ? Icons.pause_circle_outline : Icons.check_circle_outline,
+                          title: session.categoryName,
+                          subtitle: _formatTimeAgo(session.updatedAt),
+                          iconColor: isPending ? Colors.orange : Colors.green,
+                          onTap: () {
+                            Navigator.pop(context);
+                            _openSession(session);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ],
             ),
           ),
@@ -1103,24 +1150,51 @@ class _WelcomePageState extends State<WelcomePage> {
               ),
             ],
           ),
-          // Sección SESIONES GUARDADAS (solo si hay sesiones)
-          if (_sessions.isNotEmpty)
-            _buildSidebarSection(
-              context,
-              'SESIONES GUARDADAS',
-              _sessions.take(2).map((session) {
-                final isPending = session.status == InventorySessionStatus.pending;
-                return _buildSidebarItem(
-                  context,
-                  icon: isPending ? Icons.pause_circle_outline : Icons.check_circle_outline,
-                  title: session.categoryName,
-                  subtitle: _formatTimeAgo(session.updatedAt),
-                  iconColor: isPending ? Colors.orange : Colors.green,
-                  onTap: () => _openSession(session),
-                );
-              }).toList(),
+          // Sección SESIONES GUARDADAS con contenedor scrollable
+          if (_sessions.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Text(
+                'SESIONES GUARDADAS',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[600],
+                  letterSpacing: 1.2,
+                ),
+              ),
             ),
-          const Spacer(),
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.grey[200]!,
+                    width: 1,
+                  ),
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: _sessions.length,
+                  itemBuilder: (context, index) {
+                    final session = _sessions[index];
+                    final isPending = session.status == InventorySessionStatus.pending;
+                    return _buildSidebarItem(
+                      context,
+                      icon: isPending ? Icons.pause_circle_outline : Icons.check_circle_outline,
+                      title: session.categoryName,
+                      subtitle: _formatTimeAgo(session.updatedAt),
+                      iconColor: isPending ? Colors.orange : Colors.green,
+                      onTap: () => _openSession(session),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
           // Cerrar Sesión
           Padding(
             padding: const EdgeInsets.all(16.0),
@@ -1550,7 +1624,7 @@ class _WelcomePageState extends State<WelcomePage> {
           child: Padding(
             padding: EdgeInsets.symmetric(
               horizontal: isMobile ? 10 : 20,
-              vertical: isMobile ? 12 : 16,
+              vertical: isMobile ? 10 : 16,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1590,32 +1664,43 @@ class _WelcomePageState extends State<WelcomePage> {
                   ],
                 ),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SizedBox(height: isMobile ? 4 : 8),
-                      Text(
-                        value,
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          fontSize: isMobile ? 28 : 36,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                          child: IntrinsicHeight(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  value,
+                                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: isMobile ? 24 : 36,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                                Text(
+                                  title,
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: Colors.grey[600],
+                                    fontSize: isMobile ? 11 : 16,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 2,
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      ),
-                      SizedBox(height: isMobile ? 2 : 4),
-                      Text(
-                        title,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[600],
-                          fontSize: isMobile ? 14 : 16,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 2,
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 ),
               ],
