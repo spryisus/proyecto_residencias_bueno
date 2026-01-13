@@ -40,7 +40,7 @@ class ComputoExportService {
           'etiqueta_sistema_operativo': item['etiqueta_sistema_operativo'] ?? '',
           'office_instalado': item['office_instalado'] ?? '',
           'direccion_fisica': item['direccion_fisica'] ?? item['ubicacion_fisica'] ?? '',
-          'estado': item['estado'] ?? '',
+          'estado': item['estado'] ?? item['estado_ubicacion'] ?? '',
           'ciudad': item['ciudad'] ?? '',
           'tipo_edificio': item['tipo_edificio'] ?? '',
           'nombre_edificio': item['nombre_edificio'] ?? '',
@@ -52,7 +52,7 @@ class ComputoExportService {
           'gerencia': item['gerencia'] ?? '',
           // Usuario Final
           'expediente_final': item['expediente_final'] ?? '',
-          'nombre_completo_final': item['nombre_completo_final'] ?? '',
+          'nombre_completo_final': item['nombre_completo_final'] ?? item['empleado_asignado_nombre'] ?? '',
           'apellido_paterno_final': item['apellido_paterno_final'] ?? '',
           'apellido_materno_final': item['apellido_materno_final'] ?? '',
           'nombre_final': item['nombre_final'] ?? '',

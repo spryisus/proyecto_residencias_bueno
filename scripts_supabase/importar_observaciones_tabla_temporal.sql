@@ -48,3 +48,4 @@ FROM public.t_computo_observaciones;
 -- PASO 5: Limpiar tabla temporal (opcional, después de verificar)
 -- DROP TABLE IF EXISTS public.temp_observaciones_import;
 
+

@@ -144,6 +144,14 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
         print('📋 Primer equipo: ${equipos.first['inventario']}');
         // Debug: mostrar campos disponibles en el primer equipo
         print('🔍 Campos disponibles: ${equipos.first.keys.toList()}');
+        // Debug: verificar datos de ubicación y usuario final
+        final primerEquipo = equipos.first;
+        print('📍 Ubicación - direccion_fisica: ${primerEquipo['direccion_fisica']}');
+        print('📍 Ubicación - estado_ubicacion: ${primerEquipo['estado_ubicacion']}');
+        print('📍 Ubicación - ciudad: ${primerEquipo['ciudad']}');
+        print('👤 Usuario Final - nombre_final: ${primerEquipo['nombre_final']}');
+        print('👤 Usuario Final - empleado_asignado_nombre: ${primerEquipo['empleado_asignado_nombre']}');
+        print('👤 Usuario Final - expediente_final: ${primerEquipo['expediente_final']}');
       }
       
       // Cargar componentes y obtener nombres de empleados desde la vista
@@ -187,25 +195,28 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
             } catch (e) {
               if (!mounted) return;
               debugPrint('Error al cargar accesorios para ${inventarioEquipo}: $e');
-              equipo['t_componentes_computo'] = [];
+                  equipo['t_componentes_computo'] = [];
             }
           } else {
             equipo['t_componentes_computo'] = [];
           }
           
-          // Construir nombre completo del usuario final desde los campos de la vista
-          final nombreFinal = equipo['nombre_final']?.toString() ?? '';
-          final apellidoPaternoFinal = equipo['apellido_paterno_final']?.toString() ?? '';
-          final apellidoMaternoFinal = equipo['apellido_materno_final']?.toString() ?? '';
-          
-          String nombreCompletoFinal = '';
-          if (nombreFinal.isNotEmpty || apellidoPaternoFinal.isNotEmpty || apellidoMaternoFinal.isNotEmpty) {
-            final partes = [
-              nombreFinal,
-              apellidoPaternoFinal,
-              apellidoMaternoFinal
-            ].where((p) => p.isNotEmpty).toList();
-            nombreCompletoFinal = partes.join(' ');
+          // Usar el nombre completo del usuario final de la vista si existe, sino construirlo
+          String nombreCompletoFinal = equipo['empleado_asignado_nombre']?.toString() ?? '';
+          if (nombreCompletoFinal.isEmpty) {
+            // Si la vista no lo tiene, construirlo desde los campos individuales
+            final nombreFinal = equipo['nombre_final']?.toString() ?? '';
+            final apellidoPaternoFinal = equipo['apellido_paterno_final']?.toString() ?? '';
+            final apellidoMaternoFinal = equipo['apellido_materno_final']?.toString() ?? '';
+            
+            if (nombreFinal.isNotEmpty || apellidoPaternoFinal.isNotEmpty || apellidoMaternoFinal.isNotEmpty) {
+              final partes = [
+                nombreFinal,
+                apellidoPaternoFinal,
+                apellidoMaternoFinal
+              ].where((p) => p.isNotEmpty).toList();
+              nombreCompletoFinal = partes.join(' ');
+            }
           }
           equipo['empleado_asignado_nombre'] = nombreCompletoFinal;
           
@@ -374,6 +385,25 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
         final idEquipoComputo = equipo['id_equipo_computo'];
         final equipoPm = equipo['equipo_pm']?.toString() ?? '';
         final inventarioPrincipal = equipo['inventario']?.toString() ?? '';
+        
+        // Debug: Verificar datos de ubicación y usuario final antes de exportar
+        if (itemsToExport.isEmpty) {
+          print('🔍 DEBUG EXPORT - Primer equipo antes de exportar:');
+          print('  📍 direccion_fisica: ${equipo['direccion_fisica']}');
+          print('  📍 estado_ubicacion: ${equipo['estado_ubicacion']}');
+          print('  📍 ciudad: ${equipo['ciudad']}');
+          print('  📍 tipo_edificio: ${equipo['tipo_edificio']}');
+          print('  📍 nombre_edificio: ${equipo['nombre_edificio']}');
+          print('  👤 nombre_final: ${equipo['nombre_final']}');
+          print('  👤 apellido_paterno_final: ${equipo['apellido_paterno_final']}');
+          print('  👤 apellido_materno_final: ${equipo['apellido_materno_final']}');
+          print('  👤 empleado_asignado_nombre: ${equipo['empleado_asignado_nombre']}');
+          print('  👤 expediente_final: ${equipo['expediente_final']}');
+          print('  👤 empresa_final: ${equipo['empresa_final']}');
+          print('  👤 puesto_final: ${equipo['puesto_final']}');
+          print('  📋 TODOS LOS CAMPOS DEL EQUIPO: ${equipo.keys.toList()}');
+          print('  📋 VALORES COMPLETOS: $equipo');
+        }
         
         // 1. Agregar el equipo principal como primera fila con TODOS los campos
         itemsToExport.add({
@@ -2963,10 +2993,10 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
             if (inventario.isEmpty) {
               final numeroSerie = nuevoEquipo['numero_serie']?.toString().trim() ?? '';
               if (numeroSerie.isNotEmpty) {
-                inventario = 'AUTO-$numeroSerie';
-              } else {
-                final ahora = DateTime.now();
-                inventario = 'AUTO-${ahora.year}${ahora.month.toString().padLeft(2, '0')}${ahora.day.toString().padLeft(2, '0')}-${ahora.hour.toString().padLeft(2, '0')}${ahora.minute.toString().padLeft(2, '0')}${ahora.second.toString().padLeft(2, '0')}';
+              inventario = 'AUTO-$numeroSerie';
+            } else {
+              final ahora = DateTime.now();
+              inventario = 'AUTO-${ahora.year}${ahora.month.toString().padLeft(2, '0')}${ahora.day.toString().padLeft(2, '0')}-${ahora.hour.toString().padLeft(2, '0')}${ahora.minute.toString().padLeft(2, '0')}${ahora.second.toString().padLeft(2, '0')}';
               }
             }
 

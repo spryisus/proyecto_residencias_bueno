@@ -101,3 +101,4 @@ CREATE INDEX IF NOT EXISTS idx_accesorios_equipos_marca
 ON public.t_accesorios_equipos(marca);
 
 
+

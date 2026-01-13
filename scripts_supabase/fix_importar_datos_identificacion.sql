@@ -79,3 +79,4 @@ WHERE id_equipo_computo IS NOT NULL; -- Índice parcial que permite múltiples N
 -- FROM public.t_computo_identificacion
 -- ORDER BY id_identificacion;
 
+

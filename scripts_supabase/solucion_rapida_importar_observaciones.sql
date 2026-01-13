@@ -30,3 +30,4 @@ ALTER COLUMN id_equipo_computo DROP NOT NULL;
 -- Selecciona tu archivo y importa. Ahora debería funcionar sin errores.
 -- ============================================
 
+

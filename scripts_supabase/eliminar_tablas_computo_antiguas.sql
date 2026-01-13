@@ -12,3 +12,4 @@ DROP TABLE IF EXISTS public.t_empleados_computo CASCADE;
 -- Nota: t_empleados se mantiene porque puede ser usada por otras partes del sistema
 
 
+

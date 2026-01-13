@@ -200,3 +200,4 @@ WHERE temp.inventario IS NOT NULL
 */
 
 
+

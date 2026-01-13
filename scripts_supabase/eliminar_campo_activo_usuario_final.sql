@@ -22,3 +22,4 @@ WHERE table_schema = 'public'
   AND table_name = 't_computo_usuario_final'
 ORDER BY ordinal_position;
 
+

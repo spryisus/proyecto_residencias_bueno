@@ -63,3 +63,4 @@ CREATE TEMP TABLE temp_observaciones_import (
 -- 4. Limpiar tabla temporal
 -- DROP TABLE IF EXISTS temp_observaciones_import;
 
+

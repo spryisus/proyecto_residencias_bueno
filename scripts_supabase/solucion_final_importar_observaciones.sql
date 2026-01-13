@@ -60,3 +60,4 @@ WHERE table_schema = 'public'
   AND column_name IN ('id_equipo_computo', 'id_observacion')
 ORDER BY column_name;
 
+

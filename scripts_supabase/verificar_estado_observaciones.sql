@@ -35,3 +35,4 @@ WHERE schemaname = 'public'
   AND tablename = 't_computo_observaciones'
   AND indexname = 'idx_computo_observaciones_equipo';
 
+
