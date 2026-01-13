@@ -18,7 +18,7 @@ LIMIT 1;
 -- 2. OPCIONAL: Si quieres asignar el usuario responsable a todos los equipos que no tienen uno
 -- Descomenta las siguientes líneas y reemplaza el ID con el id_usuario_responsable correcto
 
-/*
+
 -- Primero, verifica cuántos equipos se actualizarán
 SELECT 
     COUNT(*) as equipos_a_actualizar
@@ -37,7 +37,6 @@ SELECT
     COUNT(id_usuario_responsable) as equipos_con_responsable,
     COUNT(*) - COUNT(id_usuario_responsable) as equipos_sin_responsable
 FROM public.t_computo_detalles_generales;
-*/
 
 -- 3. Si prefieres crear un usuario responsable diferente para cada equipo basado en algún criterio
 -- (por ejemplo, basado en el usuario final), puedes usar esto:
@@ -75,4 +74,5 @@ INNER JOIN public.t_computo_usuario_responsable ur
 WHERE dg.id_equipo_computo::TEXT = uf.id_equipo_computo::TEXT
     AND dg.id_usuario_responsable IS NULL;
 */
+
 

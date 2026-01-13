@@ -64,3 +64,4 @@ CREATE TEMP TABLE temp_observaciones_import (
 -- DROP TABLE IF EXISTS temp_observaciones_import;
 
 
+

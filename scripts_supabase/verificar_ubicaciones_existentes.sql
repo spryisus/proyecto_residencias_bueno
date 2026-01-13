@@ -17,3 +17,4 @@ SELECT
     COUNT(*) as total_ubicaciones
 FROM public.t_computo_ubicacion;
 
+

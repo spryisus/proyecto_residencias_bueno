@@ -31,3 +31,4 @@ ALTER COLUMN id_equipo_computo DROP NOT NULL;
 -- ============================================
 
 
+

@@ -584,73 +584,6 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
     return years;
   }
 
-  Future<void> _showAddBitacoraWithYearDialog() async {
-    final availableYears = _getAvailableYears();
-
-    final result = await showDialog<int>(
-      context: context,
-      builder: (context) {
-        int? selectedYear;
-        return StatefulBuilder(
-          builder: (context, setState) => AlertDialog(
-            title: const Text('Nueva Bitácora con Año'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Selecciona el año para la nueva bitácora:',
-                  style: TextStyle(fontSize: 14),
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<int>(
-                  decoration: const InputDecoration(
-                    labelText: 'Año',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.calendar_today),
-                  ),
-                  items: availableYears.map((year) {
-                    return DropdownMenuItem<int>(
-                      value: year,
-                      child: Text(year.toString()),
-                    );
-                  }).toList(),
-                  onChanged: (int? year) {
-                    setState(() {
-                      selectedYear = year;
-                    });
-                  },
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancelar'),
-              ),
-              ElevatedButton(
-                onPressed: selectedYear == null
-                    ? null
-                    : () => Navigator.pop(context, selectedYear),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF003366),
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('Continuar'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-
-    if (result != null) {
-      // Crear una fecha con el año seleccionado (usar 1 de enero como fecha por defecto)
-      final fechaInicial = DateTime(result, 1, 1);
-      await _showAddBitacoraDialog(fechaInicial: fechaInicial);
-    }
-  }
-
   Future<void> _showDeleteYearDialog() async {
     final yearsWithRecords = _getYearsWithRecords();
     
@@ -1553,19 +1486,6 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: _showAddBitacoraWithYearDialog,
-                      icon: const Icon(Icons.calendar_today, size: 18),
-                      label: const Text('Nueva con Año'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue[700],
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton.icon(
                       onPressed: _showDeleteYearDialog,
                       icon: const Icon(Icons.delete_forever, size: 18),
                       label: const Text('Eliminar Año'),
@@ -1905,20 +1825,6 @@ class _BitacoraScreenState extends State<BitacoraScreen> {
                     label: const Text('Nueva Bitácora'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF003366),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    onPressed: _showAddBitacoraWithYearDialog,
-                    icon: const Icon(Icons.calendar_today),
-                    label: const Text('Nueva con Año'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue[700],
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,

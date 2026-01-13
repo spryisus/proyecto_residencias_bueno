@@ -48,3 +48,4 @@ FROM public.t_computo_detalles_generales dg
 GROUP BY dg.id_usuario_responsable
 ORDER BY cantidad_equipos DESC;
 
+

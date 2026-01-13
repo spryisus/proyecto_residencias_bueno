@@ -658,8 +658,24 @@ async def generate_computo_excel(request: Request):
                     'number_format': ref_cell.number_format,
                 }
             
+            # Ordenar items por ID de menor a mayor
+            def get_id_value(item):
+                id_val = item.get("id")
+                if id_val is None:
+                    return 0
+                try:
+                    if isinstance(id_val, int):
+                        return id_val
+                    if isinstance(id_val, str):
+                        return int(id_val) if id_val.isdigit() else 0
+                    return int(id_val)
+                except (ValueError, TypeError):
+                    return 0
+            
+            sorted_items = sorted(items, key=get_id_value)
+            
             # Escribir cada equipo/accesorio en una fila usando función segura y copiando formato
-            for idx, item in enumerate(items, start=0):
+            for idx, item in enumerate(sorted_items, start=0):
                 row = start_row + idx
                 
                 # Mapear campos según la plantilla (40 columnas)
@@ -759,6 +775,48 @@ async def generate_computo_excel(request: Request):
                         cell.alignment = ref_format['alignment']
                     if ref_format['number_format']:
                         cell.number_format = ref_format['number_format']
+            
+            # Detectar grupos de filas con el mismo ID y EQUIPO PM para combinar celdas
+            # Columna A (ID) y Columna C (EQUIPO PM)
+            # Agrupar por (ID, EQUIPO_PM) como tupla
+            groups = {}
+            for idx, item in enumerate(sorted_items, start=0):
+                row = start_row + idx
+                item_id = item.get("id")
+                item_equipo_pm = item.get("equipo_pm", "")
+                group_key = (item_id, item_equipo_pm)
+                
+                if group_key not in groups:
+                    groups[group_key] = {'start_row': row, 'end_row': row}
+                else:
+                    groups[group_key]['end_row'] = row
+            
+            # Combinar celdas para cada grupo
+            for group_key, group_info in groups.items():
+                start_row_group = group_info['start_row']
+                end_row_group = group_info['end_row']
+                
+                # Solo combinar si hay más de una fila en el grupo
+                if end_row_group > start_row_group:
+                    # Combinar celdas de ID (columna A) para este grupo
+                    try:
+                        ws.merge_cells(start_row=start_row_group, start_column=1, end_row=end_row_group, end_column=1)
+                        # Centrar el texto en la celda combinada
+                        merged_cell = ws.cell(row=start_row_group, column=1)
+                        merged_cell.alignment = Alignment(horizontal='center', vertical='center')
+                        logger.info(f"✅ Celdas de ID combinadas: filas {start_row_group}-{end_row_group} (ID: {group_key[0]})")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Error al combinar celdas de ID (filas {start_row_group}-{end_row_group}): {e}")
+                    
+                    # Combinar celdas de EQUIPO PM (columna C) para este grupo
+                    try:
+                        ws.merge_cells(start_row=start_row_group, start_column=3, end_row=end_row_group, end_column=3)
+                        # Centrar el texto en la celda combinada
+                        merged_cell = ws.cell(row=start_row_group, column=3)
+                        merged_cell.alignment = Alignment(horizontal='center', vertical='center')
+                        logger.info(f"✅ Celdas de EQUIPO PM combinadas: filas {start_row_group}-{end_row_group} (EQUIPO PM: {group_key[1]})")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Error al combinar celdas de EQUIPO PM (filas {start_row_group}-{end_row_group}): {e}")
         else:
             # Crear desde cero con formato correcto
             wb = _create_computo_excel(items)

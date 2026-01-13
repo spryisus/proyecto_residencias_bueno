@@ -39,3 +39,4 @@ COMMENT ON COLUMN public.t_bitacora_envios.cobo IS 'Campo COBO de la bitácora';
 
 
 
+

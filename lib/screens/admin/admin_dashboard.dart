@@ -1172,7 +1172,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
               icon: Icons.inventory_2,
               title: 'Inventarios',
               value: _totalInventarios.toString(),
-              badge: '+12%',
+              badge: null,
               badgeColor: Colors.green,
               iconColor: Colors.blue,
               onTap: () async {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:async';
@@ -181,7 +182,9 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
                 // Convertir accesorios al formato esperado
                 equipo['t_componentes_computo'] = (accesoriosResponse as List).map((accesorio) {
                   return {
+                    'id_accesorio': accesorio['id_accesorio'], // ID necesario para editar/eliminar
                     'tipo_componente': accesorio['tipo_equipo'] ?? 'Accesorio',
+                    'tipo_equipo': accesorio['tipo_equipo'], // Mantener también el original
                     'marca': accesorio['marca'],
                     'modelo': accesorio['modelo'],
                     'numero_serie': accesorio['numero_serie'],
@@ -500,6 +503,13 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
           });
         }
       }
+
+      // Ordenar items por ID de menor a mayor antes de exportar
+      itemsToExport.sort((a, b) {
+        final idA = a['id'] is int ? a['id'] : (int.tryParse(a['id']?.toString() ?? '0') ?? 0);
+        final idB = b['id'] is int ? b['id'] : (int.tryParse(b['id']?.toString() ?? '0') ?? 0);
+        return idA.compareTo(idB);
+      });
 
       final filePath = await ComputoExportService.exportComputoToExcel(itemsToExport);
 
@@ -2993,10 +3003,10 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
             if (inventario.isEmpty) {
               final numeroSerie = nuevoEquipo['numero_serie']?.toString().trim() ?? '';
               if (numeroSerie.isNotEmpty) {
-              inventario = 'AUTO-$numeroSerie';
-            } else {
-              final ahora = DateTime.now();
-              inventario = 'AUTO-${ahora.year}${ahora.month.toString().padLeft(2, '0')}${ahora.day.toString().padLeft(2, '0')}-${ahora.hour.toString().padLeft(2, '0')}${ahora.minute.toString().padLeft(2, '0')}${ahora.second.toString().padLeft(2, '0')}';
+                inventario = 'AUTO-$numeroSerie';
+              } else {
+                final ahora = DateTime.now();
+                inventario = 'AUTO-${ahora.year}${ahora.month.toString().padLeft(2, '0')}${ahora.day.toString().padLeft(2, '0')}-${ahora.hour.toString().padLeft(2, '0')}${ahora.minute.toString().padLeft(2, '0')}${ahora.second.toString().padLeft(2, '0')}';
               }
             }
 
@@ -3053,6 +3063,10 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
             }
             if (nuevoEquipo['memoria_ram']?.toString().trim().isNotEmpty ?? false) {
               datosDetalles['memoria_ram'] = nuevoEquipo['memoria_ram']?.toString().trim();
+            }
+            // Guardar id_ubicacion si está seleccionada
+            if (nuevoEquipo['id_ubicacion'] != null) {
+              datosDetalles['id_ubicacion'] = nuevoEquipo['id_ubicacion'];
             }
 
             final resultadoDetalles = await _safeSupabaseCall(() => 
@@ -3179,32 +3193,191 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
               throw Exception('ID del equipo no encontrado');
             }
 
-            // Actualizar el equipo en la base de datos
-            await _safeSupabaseCall(() => 
-              supabaseClient
-                  .from('t_equipos_computo')
-                  .update({
-                    'tipo_equipo': updated['tipo_equipo'],
-                    'marca': updated['marca'],
-                    'modelo': updated['modelo'],
-                    'procesador': updated['procesador'],
-                    'numero_serie': updated['numero_serie'],
-                    'disco_duro': updated['disco_duro'],
-                    'memoria': updated['memoria'],
-                    'sistema_operativo_instalado': updated['sistema_operativo_instalado'] ?? updated['sistema_operativo'],
-                    'office_instalado': updated['office_instalado'],
-                    // NOTA: ubicacion_fisica no existe directamente en la tabla
-                    // Se maneja a través de id_ubicacion_fisica (FK a t_ubicaciones_computo)
-                    'observaciones': updated['observaciones'],
-                  })
-                  .eq('id_equipo_computo', idEquipoComputo)
-            );
+            debugPrint('🔄 Actualizando equipo con ID: $idEquipoComputo');
+
+            // 1. Actualizar t_computo_detalles_generales
+            final datosDetalles = <String, dynamic>{};
+            if (updated['tipo_equipo']?.toString().trim().isNotEmpty ?? false) {
+              datosDetalles['tipo_equipo'] = updated['tipo_equipo']?.toString().trim();
+            }
+            if (updated['marca']?.toString().trim().isNotEmpty ?? false) {
+              datosDetalles['marca'] = updated['marca']?.toString().trim();
+            }
+            if (updated['modelo']?.toString().trim().isNotEmpty ?? false) {
+              datosDetalles['modelo'] = updated['modelo']?.toString().trim();
+            }
+            if (updated['procesador']?.toString().trim().isNotEmpty ?? false) {
+              datosDetalles['procesador'] = updated['procesador']?.toString().trim();
+            }
+            if (updated['numero_serie']?.toString().trim().isNotEmpty ?? false) {
+              datosDetalles['numero_serie'] = updated['numero_serie']?.toString().trim();
+            }
+            if (updated['disco_duro']?.toString().trim().isNotEmpty ?? false) {
+              datosDetalles['disco_duro'] = updated['disco_duro']?.toString().trim();
+            }
+            if (updated['memoria_ram']?.toString().trim().isNotEmpty ?? false) {
+              datosDetalles['memoria_ram'] = updated['memoria_ram']?.toString().trim();
+            } else if (updated['memoria']?.toString().trim().isNotEmpty ?? false) {
+              datosDetalles['memoria_ram'] = updated['memoria']?.toString().trim();
+            }
+            if (updated['fecha_registro']?.toString().trim().isNotEmpty ?? false) {
+              datosDetalles['fecha_registro'] = updated['fecha_registro']?.toString().trim();
+            }
+            // Guardar id_ubicacion si está seleccionada
+            if (updated['id_ubicacion'] != null) {
+              datosDetalles['id_ubicacion'] = updated['id_ubicacion'];
+            }
+
+            if (datosDetalles.isNotEmpty) {
+              await _safeSupabaseCall(() => 
+                supabaseClient
+                    .from('t_computo_detalles_generales')
+                    .update(datosDetalles)
+                    .eq('id_equipo_computo', idEquipoComputo)
+              );
+              debugPrint('✅ t_computo_detalles_generales actualizado');
+            }
+
+            // 2. Actualizar o insertar en t_computo_software
+            final datosSoftware = <String, dynamic>{};
+            if (updated['sistema_operativo_instalado']?.toString().trim().isNotEmpty ?? false) {
+              datosSoftware['sistema_operativo_instalado'] = updated['sistema_operativo_instalado']?.toString().trim();
+            } else if (updated['sistema_operativo']?.toString().trim().isNotEmpty ?? false) {
+              datosSoftware['sistema_operativo_instalado'] = updated['sistema_operativo']?.toString().trim();
+            }
+            if (updated['etiqueta_sistema_operativo']?.toString().trim().isNotEmpty ?? false) {
+              datosSoftware['etiqueta_sistema_operativo'] = updated['etiqueta_sistema_operativo']?.toString().trim();
+            }
+            if (updated['office_instalado']?.toString().trim().isNotEmpty ?? false) {
+              datosSoftware['office_instalado'] = updated['office_instalado']?.toString().trim();
+            }
+
+            if (datosSoftware.isNotEmpty) {
+              // Verificar si existe registro de software
+              final softwareExistente = await _safeSupabaseCall(() => 
+                supabaseClient
+                    .from('t_computo_software')
+                    .select('id_software')
+                    .eq('id_equipo_computo', idEquipoComputo)
+                    .maybeSingle()
+              );
+
+              if (softwareExistente != null && softwareExistente['id_software'] != null) {
+                // Actualizar registro existente
+                await _safeSupabaseCall(() => 
+                  supabaseClient
+                      .from('t_computo_software')
+                      .update(datosSoftware)
+                      .eq('id_equipo_computo', idEquipoComputo)
+                );
+                debugPrint('✅ t_computo_software actualizado');
+              } else {
+                // Insertar nuevo registro
+                datosSoftware['id_equipo_computo'] = idEquipoComputo;
+                await _safeSupabaseCall(() => 
+                  supabaseClient
+                      .from('t_computo_software')
+                      .insert(datosSoftware)
+                );
+                debugPrint('✅ t_computo_software insertado');
+              }
+            }
+
+            // 3. Actualizar o insertar en t_computo_identificacion
+            final datosIdentificacion = <String, dynamic>{};
+            if (updated['tipo_uso']?.toString().trim().isNotEmpty ?? false) {
+              datosIdentificacion['tipo_uso'] = updated['tipo_uso']?.toString().trim();
+            }
+            if (updated['nombre_equipo_dominio']?.toString().trim().isNotEmpty ?? false) {
+              datosIdentificacion['nombre_equipo_dominio'] = updated['nombre_equipo_dominio']?.toString().trim();
+            }
+            if (updated['status']?.toString().trim().isNotEmpty ?? false) {
+              datosIdentificacion['status'] = updated['status']?.toString().trim();
+            }
+            if (updated['direccion_administrativa']?.toString().trim().isNotEmpty ?? false) {
+              datosIdentificacion['direccion_administrativa'] = updated['direccion_administrativa']?.toString().trim();
+            }
+            if (updated['subdireccion']?.toString().trim().isNotEmpty ?? false) {
+              datosIdentificacion['subdireccion'] = updated['subdireccion']?.toString().trim();
+            }
+            if (updated['gerencia']?.toString().trim().isNotEmpty ?? false) {
+              datosIdentificacion['gerencia'] = updated['gerencia']?.toString().trim();
+            }
+
+            if (datosIdentificacion.isNotEmpty) {
+              // Verificar si existe registro de identificación
+              final identificacionExistente = await _safeSupabaseCall(() => 
+                supabaseClient
+                    .from('t_computo_identificacion')
+                    .select('id_identificacion')
+                    .eq('id_equipo_computo', idEquipoComputo)
+                    .maybeSingle()
+              );
+
+              if (identificacionExistente != null && identificacionExistente['id_identificacion'] != null) {
+                // Actualizar registro existente
+                await _safeSupabaseCall(() => 
+                  supabaseClient
+                      .from('t_computo_identificacion')
+                      .update(datosIdentificacion)
+                      .eq('id_equipo_computo', idEquipoComputo)
+                );
+                debugPrint('✅ t_computo_identificacion actualizado');
+              } else {
+                // Insertar nuevo registro
+                datosIdentificacion['id_equipo_computo'] = idEquipoComputo;
+                await _safeSupabaseCall(() => 
+                  supabaseClient
+                      .from('t_computo_identificacion')
+                      .insert(datosIdentificacion)
+                );
+                debugPrint('✅ t_computo_identificacion insertado');
+              }
+            }
+
+            // 4. Actualizar o insertar en t_computo_observaciones
+            if (updated['observaciones']?.toString().trim().isNotEmpty ?? false) {
+              // Verificar si existe registro de observaciones
+              final observacionesExistentes = await _safeSupabaseCall(() => 
+                supabaseClient
+                    .from('t_computo_observaciones')
+                    .select('id_observacion')
+                    .eq('id_equipo_computo', idEquipoComputo.toString())
+                    .maybeSingle()
+              );
+
+              if (observacionesExistentes != null && observacionesExistentes['id_observacion'] != null) {
+                // Actualizar registro existente
+                await _safeSupabaseCall(() => 
+                  supabaseClient
+                      .from('t_computo_observaciones')
+                      .update({
+                        'observaciones': updated['observaciones']?.toString().trim(),
+                      })
+                      .eq('id_equipo_computo', idEquipoComputo.toString())
+                );
+                debugPrint('✅ t_computo_observaciones actualizado');
+              } else {
+                // Insertar nuevo registro
+                await _safeSupabaseCall(() => 
+                  supabaseClient
+                      .from('t_computo_observaciones')
+                      .insert({
+                        'id_equipo_computo': idEquipoComputo.toString(),
+                        'observaciones': updated['observaciones']?.toString().trim(),
+                      })
+                );
+                debugPrint('✅ t_computo_observaciones insertado');
+              }
+            }
             
             if (!mounted) return;
 
+            // Recargar los equipos
+            await _loadEquipos();
+
             // Guardar el messenger ANTES de operaciones asíncronas (SOLUCIÓN 2)
             if (mounted && _scaffoldMessengerKey.currentState != null) {
-              _loadEquipos();
               _scaffoldMessengerKey.currentState!.showSnackBar(
                 const SnackBar(
                   content: Text('Equipo actualizado correctamente'),
@@ -3214,6 +3387,7 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
               );
             }
           } catch (e) {
+            debugPrint('❌ Error al actualizar equipo: $e');
             if (mounted && _scaffoldMessengerKey.currentState != null) {
               _scaffoldMessengerKey.currentState!.showSnackBar(
                 SnackBar(
@@ -3260,21 +3434,58 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
         throw Exception('ID del equipo no encontrado');
       }
 
-      // Eliminar primero los componentes asociados
+      debugPrint('🗑️ Eliminando equipo con ID: $idEquipoComputo');
+
+      // Eliminar primero los accesorios asociados
       await _safeSupabaseCall(() => 
         supabaseClient
-            .from('t_componentes_computo')
+            .from('t_accesorios_equipos')
             .delete()
             .eq('id_equipo_computo', idEquipoComputo)
       );
 
-      // Eliminar el equipo
+      // Eliminar registros relacionados en orden inverso de dependencias
+      // 1. Observaciones
       await _safeSupabaseCall(() => 
         supabaseClient
-            .from('t_equipos_computo')
+            .from('t_computo_observaciones')
+            .delete()
+            .eq('id_equipo_computo', idEquipoComputo.toString())
+      );
+
+      // 2. Usuario final
+      await _safeSupabaseCall(() => 
+        supabaseClient
+            .from('t_computo_usuario_final')
             .delete()
             .eq('id_equipo_computo', idEquipoComputo)
       );
+
+      // 3. Identificación
+      await _safeSupabaseCall(() => 
+        supabaseClient
+            .from('t_computo_identificacion')
+            .delete()
+            .eq('id_equipo_computo', idEquipoComputo)
+      );
+
+      // 4. Software
+      await _safeSupabaseCall(() => 
+        supabaseClient
+            .from('t_computo_software')
+            .delete()
+            .eq('id_equipo_computo', idEquipoComputo)
+      );
+
+      // 5. Detalles generales (tabla principal)
+      await _safeSupabaseCall(() => 
+        supabaseClient
+            .from('t_computo_detalles_generales')
+            .delete()
+            .eq('id_equipo_computo', idEquipoComputo)
+      );
+
+      debugPrint('✅ Equipo eliminado correctamente');
 
       if (!mounted) return;
 
@@ -3316,7 +3527,10 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
   // Diálogo para agregar/editar componente
   void _mostrarComponenteDialog(BuildContext context, Map<String, dynamic> equipo, Map<String, dynamic>? componente) {
     final isNuevo = componente == null;
-    final tipoController = TextEditingController(text: componente?['tipo_componente']?.toString() ?? '');
+    // Usar tipo_componente si existe (para visualización), sino tipo_equipo (de la BD)
+    final tipoComponente = componente?['tipo_componente']?.toString() ?? 
+                          componente?['tipo_equipo']?.toString() ?? '';
+    final tipoController = TextEditingController(text: tipoComponente);
     final marcaController = TextEditingController(text: componente?['marca']?.toString() ?? '');
     final modeloController = TextEditingController(text: componente?['modelo']?.toString() ?? '');
     final numeroSerieController = TextEditingController(text: componente?['numero_serie']?.toString() ?? '');
@@ -3398,7 +3612,7 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
 
                 final datosComponente = {
                   'id_equipo_computo': idEquipoComputo,
-                  'tipo_componente': tipoController.text.trim(),
+                  'tipo_equipo': tipoController.text.trim(),
                   'marca': marcaController.text.trim().isEmpty ? null : marcaController.text.trim(),
                   'modelo': modeloController.text.trim().isEmpty ? null : modeloController.text.trim(),
                   'numero_serie': numeroSerieController.text.trim().isEmpty ? null : numeroSerieController.text.trim(),
@@ -3406,31 +3620,34 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
                 };
 
                 if (isNuevo) {
-                  // Insertar nuevo componente
+                  // Insertar nuevo componente en t_accesorios_equipos
                   await _safeSupabaseCall(() => 
                     supabaseClient
-                        .from('t_componentes_computo')
+                        .from('t_accesorios_equipos')
                         .insert(datosComponente)
                   );
+                  debugPrint('✅ Componente insertado correctamente');
                 } else {
                   // Actualizar componente existente
-                  final idComponente = componente['id_componente_computo'];
+                  final idComponente = componente['id_accesorio'];
                   if (idComponente == null) {
                     throw Exception('ID del componente no encontrado');
                   }
                   await _safeSupabaseCall(() => 
                     supabaseClient
-                        .from('t_componentes_computo')
+                        .from('t_accesorios_equipos')
                         .update(datosComponente)
-                        .eq('id_componente_computo', idComponente)
+                        .eq('id_accesorio', idComponente)
                   );
+                  debugPrint('✅ Componente actualizado correctamente');
                 }
 
                 if (!mounted) return;
 
-                // Cerrar diálogo y recargar
-                Navigator.pop(context); // Cerrar diálogo de componente
-                Navigator.pop(context); // Cerrar diálogo de detalles si está abierto
+                // Cerrar solo el diálogo de componente
+                Navigator.pop(context);
+                
+                // Recargar equipos para actualizar la lista
                 await _loadEquipos();
 
                 if (mounted && _scaffoldMessengerKey.currentState != null) {
@@ -3464,7 +3681,9 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
 
   // Eliminar componente
   Future<void> _eliminarComponente(BuildContext context, Map<String, dynamic> componente) async {
-    final tipoComponente = componente['tipo_componente']?.toString() ?? 'este componente';
+    final tipoComponente = componente['tipo_componente']?.toString() ?? 
+                          componente['tipo_equipo']?.toString() ?? 
+                          'este componente';
     
     final confirmar = await showDialog<bool>(
       context: context,
@@ -3488,34 +3707,39 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
     if (confirmar != true || !mounted) return;
 
     try {
-      final idComponente = componente['id_componente_computo'];
+      final idComponente = componente['id_accesorio'];
       if (idComponente == null) {
         throw Exception('ID del componente no encontrado');
       }
 
+      debugPrint('🗑️ Eliminando componente con ID: $idComponente');
+
       await _safeSupabaseCall(() => 
         supabaseClient
-            .from('t_componentes_computo')
+            .from('t_accesorios_equipos')
             .delete()
-            .eq('id_componente_computo', idComponente)
+            .eq('id_accesorio', idComponente)
       );
+
+      debugPrint('✅ Componente eliminado correctamente');
 
       if (!mounted) return;
 
-      // Cerrar diálogo de detalles si está abierto y recargar
-      Navigator.pop(context); // Cerrar diálogo de detalles
+      // Recargar equipos para actualizar la lista
       await _loadEquipos();
 
+      // Mostrar mensaje de éxito
       if (mounted && _scaffoldMessengerKey.currentState != null) {
         _scaffoldMessengerKey.currentState!.showSnackBar(
-          const SnackBar(
-            content: Text('Componente eliminado correctamente'),
+          SnackBar(
+            content: Text('Componente "$tipoComponente" eliminado correctamente'),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
     } catch (e) {
+      debugPrint('❌ Error al eliminar componente: $e');
       if (mounted && _scaffoldMessengerKey.currentState != null) {
         _scaffoldMessengerKey.currentState!.showSnackBar(
           SnackBar(
@@ -3573,6 +3797,11 @@ class _EquipoDialogState extends State<_EquipoDialog> {
   late TextEditingController _ciudadController;
   late TextEditingController _tipoEdificioController;
   late TextEditingController _nombreEdificioController;
+  
+  // Variables para selector de ubicación
+  List<Map<String, dynamic>> _ubicaciones = [];
+  int? _idUbicacionSeleccionada;
+  bool _cargandoUbicaciones = true;
   
   // Campos de t_computo_usuario_final
   late TextEditingController _nombreFinalController;
@@ -3650,6 +3879,58 @@ class _EquipoDialogState extends State<_EquipoDialog> {
     
     // Campos de t_computo_observaciones
     _observacionesController = TextEditingController(text: widget.equipo['observaciones']?.toString() ?? '');
+    
+    // Cargar ubicaciones disponibles
+    _cargarUbicaciones();
+    
+    // Si el equipo ya tiene una ubicación, establecerla como seleccionada
+    if (widget.equipo['id_ubicacion'] != null) {
+      _idUbicacionSeleccionada = widget.equipo['id_ubicacion'] is int 
+          ? widget.equipo['id_ubicacion'] 
+          : int.tryParse(widget.equipo['id_ubicacion'].toString());
+    }
+  }
+  
+  Future<void> _cargarUbicaciones() async {
+    try {
+      final ubicaciones = await supabaseClient
+          .from('t_computo_ubicacion')
+          .select()
+          .order('ciudad');
+      
+      if (mounted) {
+        setState(() {
+          _ubicaciones = List<Map<String, dynamic>>.from(ubicaciones);
+          _cargandoUbicaciones = false;
+          
+          // Si hay una ubicación seleccionada previamente, rellenar los campos
+          if (_idUbicacionSeleccionada != null) {
+            final ubicacionSeleccionada = _ubicaciones.firstWhere(
+              (u) => u['id_ubicacion'] == _idUbicacionSeleccionada,
+              orElse: () => {},
+            );
+            if (ubicacionSeleccionada.isNotEmpty) {
+              _rellenarCamposUbicacion(ubicacionSeleccionada);
+            }
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error al cargar ubicaciones: $e');
+      if (mounted) {
+        setState(() {
+          _cargandoUbicaciones = false;
+        });
+      }
+    }
+  }
+  
+  void _rellenarCamposUbicacion(Map<String, dynamic> ubicacion) {
+    _direccionFisicaController.text = ubicacion['direccion_fisica']?.toString() ?? '';
+    _estadoController.text = ubicacion['estado']?.toString() ?? '';
+    _ciudadController.text = ubicacion['ciudad']?.toString() ?? '';
+    _tipoEdificioController.text = ubicacion['tipo_edificio']?.toString() ?? '';
+    _nombreEdificioController.text = ubicacion['nombre_edificio']?.toString() ?? '';
   }
 
   @override
@@ -3856,6 +4137,7 @@ class _EquipoDialogState extends State<_EquipoDialog> {
       'gerencia': _gerenciaController.text.trim(),
       
       // Campos de t_computo_ubicacion
+      'id_ubicacion': _idUbicacionSeleccionada,
       'direccion_fisica': _direccionFisicaController.text.trim(),
       'estado_ubicacion': _estadoController.text.trim(),
       'ciudad': _ciudadController.text.trim(),
@@ -4109,58 +4391,116 @@ class _EquipoDialogState extends State<_EquipoDialog> {
             // Sección: Ubicación
             const SizedBox(height: 24),
             _buildSectionTitle('Ubicación'),
+            // Selector de ciudad (dropdown)
+            if (_cargandoUbicaciones)
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: DropdownButtonFormField<int>(
+                  value: _idUbicacionSeleccionada,
+                  decoration: InputDecoration(
+                    labelText: 'Seleccionar Ciudad *',
+                    prefixIcon: const Icon(Icons.location_city, color: Color(0xFF003366)),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                  ),
+                  items: _ubicaciones.map((ubicacion) {
+                    return DropdownMenuItem<int>(
+                      value: ubicacion['id_ubicacion'] as int,
+                      child: Text(
+                        '${ubicacion['ciudad']} - ${ubicacion['estado']}',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (int? idUbicacion) {
+                    if (idUbicacion != null) {
+                      final ubicacionSeleccionada = _ubicaciones.firstWhere(
+                        (u) => u['id_ubicacion'] == idUbicacion,
+                      );
+                      setState(() {
+                        _idUbicacionSeleccionada = idUbicacion;
+                        _rellenarCamposUbicacion(ubicacionSeleccionada);
+                      });
+                    }
+                  },
+                  hint: const Text('Selecciona una ciudad'),
+                ),
+              ),
+            const SizedBox(height: 16),
+            // Campos de ubicación (rellenados automáticamente, solo lectura)
             TextField(
               controller: _direccionFisicaController,
+              readOnly: true,
               decoration: InputDecoration(
                 labelText: 'Dirección Física',
                 prefixIcon: const Icon(Icons.location_on, color: Color(0xFF003366)),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: Colors.grey[100],
+                hintText: 'Se rellena automáticamente al seleccionar la ciudad',
               ),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: _estadoController,
+              readOnly: true,
               decoration: InputDecoration(
                 labelText: 'Estado',
                 prefixIcon: const Icon(Icons.map, color: Color(0xFF003366)),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: Colors.grey[100],
+                hintText: 'Se rellena automáticamente al seleccionar la ciudad',
               ),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: _ciudadController,
+              readOnly: true,
               decoration: InputDecoration(
                 labelText: 'Ciudad',
                 prefixIcon: const Icon(Icons.location_city, color: Color(0xFF003366)),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: Colors.grey[100],
+                hintText: 'Se rellena automáticamente al seleccionar la ciudad',
               ),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: _tipoEdificioController,
+              readOnly: true,
               decoration: InputDecoration(
                 labelText: 'Tipo de Edificio',
                 prefixIcon: const Icon(Icons.apartment, color: Color(0xFF003366)),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: Colors.grey[100],
+                hintText: 'Se rellena automáticamente al seleccionar la ciudad',
               ),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: _nombreEdificioController,
+              readOnly: true,
               decoration: InputDecoration(
                 labelText: 'Nombre del Edificio',
                 prefixIcon: const Icon(Icons.apartment, color: Color(0xFF003366)),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: Colors.grey[100],
+                hintText: 'Se rellena automáticamente al seleccionar la ciudad',
               ),
             ),
             
