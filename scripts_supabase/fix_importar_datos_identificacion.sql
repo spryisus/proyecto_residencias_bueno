@@ -81,3 +81,10 @@ WHERE id_equipo_computo IS NOT NULL; -- Índice parcial que permite múltiples N
 
 
 
+
+
+
+
+
+
+

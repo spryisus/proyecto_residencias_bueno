@@ -49,3 +49,10 @@ GROUP BY dg.id_usuario_responsable
 ORDER BY cantidad_equipos DESC;
 
 
+
+
+
+
+
+
+

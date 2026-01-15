@@ -142,6 +142,19 @@ CREATE TABLE public.t_computo_usuario_final (
   CONSTRAINT t_computo_usuario_final_pkey PRIMARY KEY (id_usuario_final),
   CONSTRAINT fk_equipo_computo_usuario_final FOREIGN KEY (id_equipo_computo) REFERENCES public.t_computo_detalles_generales(id_equipo_computo)
 );
+CREATE TABLE public.t_computo_usuario_final_backup_pre_rotacion (
+  id_usuario_final bigint,
+  id_equipo_computo bigint,
+  expediente text,
+  apellido_paterno text,
+  apellido_materno text,
+  nombre text,
+  empresa text,
+  puesto text,
+  creado_en timestamp with time zone,
+  actualizado_en timestamp with time zone,
+  fecha_backup timestamp with time zone
+);
 CREATE TABLE public.t_computo_usuario_responsable (
   id_usuario_responsable bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   expediente text,

@@ -3429,63 +3429,254 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
     if (confirmar != true || !mounted) return;
 
     try {
-      final idEquipoComputo = equipo['id_equipo_computo'];
+      dynamic idEquipoComputo = equipo['id_equipo_computo'];
+      final equipoPm = equipo['equipo_pm'];
+      final idEquipoPrincipal = equipo['id_equipo_principal'];
+      
+      // Si no tiene id_equipo_computo, intentar buscarlo por otros campos
       if (idEquipoComputo == null) {
-        throw Exception('ID del equipo no encontrado');
+        debugPrint('⚠️ No se encontró id_equipo_computo, buscando por otros campos...');
+        debugPrint('🔍 Campos disponibles: ${equipo.keys.toList()}');
+        debugPrint('🔍 equipo_pm: $equipoPm');
+        debugPrint('🔍 id_equipo_principal: $idEquipoPrincipal');
+        debugPrint('🔍 inventario: ${equipo['inventario']}');
+        
+        // Intentar buscar por inventario (incluso si es null)
+        if (equipo['inventario'] != null) {
+          try {
+            final equiposEncontrados = await supabaseClient
+                .from('t_computo_detalles_generales')
+                .select('id_equipo_computo')
+                .eq('inventario', equipo['inventario'])
+                .limit(1);
+            
+            if (equiposEncontrados.isNotEmpty) {
+              idEquipoComputo = equiposEncontrados.first['id_equipo_computo'];
+              debugPrint('✅ Equipo encontrado por inventario: $idEquipoComputo');
+            }
+          } catch (e) {
+            debugPrint('⚠️ Error al buscar por inventario: $e');
+          }
+        }
+        
+        // Si aún no se encontró, intentar buscar por equipo_pm
+        if (idEquipoComputo == null && equipoPm != null) {
+          try {
+            final equiposEncontrados = await supabaseClient
+                .from('t_computo_detalles_generales')
+                .select('id_equipo_computo')
+                .eq('equipo_pm', equipoPm)
+                .limit(1);
+            
+            if (equiposEncontrados.isNotEmpty) {
+              idEquipoComputo = equiposEncontrados.first['id_equipo_computo'];
+              debugPrint('✅ Equipo encontrado por equipo_pm: $idEquipoComputo');
+            }
+          } catch (e) {
+            debugPrint('⚠️ Error al buscar por equipo_pm: $e');
+          }
+        }
+        
+        // Si aún no se encontró, intentar buscar equipos sin inventario o con inventario vacío
+        if (idEquipoComputo == null) {
+          try {
+            // Obtener todos los equipos y filtrar los que tienen inventario null o vacío
+            final todosEquipos = await supabaseClient
+                .from('t_computo_detalles_generales')
+                .select('id_equipo_computo, inventario, equipo_pm');
+            
+            final equiposSinInventario = todosEquipos.where((eq) {
+              final inv = eq['inventario']?.toString().trim();
+              return inv == null || inv.isEmpty;
+            }).toList();
+            
+            debugPrint('🔍 Equipos sin inventario encontrados: ${equiposSinInventario.length}');
+            
+            // Si solo hay uno, usarlo. Si hay varios, intentar usar el que coincida con equipo_pm
+            if (equiposSinInventario.length == 1) {
+              idEquipoComputo = equiposSinInventario.first['id_equipo_computo'];
+              debugPrint('✅ Equipo sin inventario encontrado: $idEquipoComputo');
+            } else if (equiposSinInventario.length > 1 && equipoPm != null) {
+              // Si hay varios, intentar encontrar el que coincida con equipo_pm
+              final equipoCoincidente = equiposSinInventario.firstWhere(
+                (eq) => eq['equipo_pm'] == equipoPm,
+                orElse: () => equiposSinInventario.first,
+              );
+              idEquipoComputo = equipoCoincidente['id_equipo_computo'];
+              debugPrint('✅ Equipo sin inventario encontrado por equipo_pm: $idEquipoComputo');
+            } else if (equiposSinInventario.length > 1) {
+              debugPrint('⚠️ Hay múltiples equipos sin inventario. Usando el primero encontrado.');
+              idEquipoComputo = equiposSinInventario.first['id_equipo_computo'];
+            }
+          } catch (e) {
+            debugPrint('⚠️ Error al buscar equipos sin inventario: $e');
+          }
+        }
+        
+        // Si aún no se encontró, intentar eliminar directamente el equipo principal si existe
+        if (idEquipoComputo == null && idEquipoPrincipal != null) {
+          debugPrint('⚠️ No se encontró id_equipo_computo, intentando eliminar equipo principal directamente...');
+          try {
+            // Verificar si hay detalles asociados
+            final detallesAsociados = await supabaseClient
+                .from('t_computo_detalles_generales')
+                .select('id_equipo_computo')
+                .eq('equipo_pm', idEquipoPrincipal);
+            
+            if (detallesAsociados.isNotEmpty) {
+              // Si hay detalles, eliminar todos primero
+              for (var detalle in detallesAsociados) {
+                final detalleId = detalle['id_equipo_computo'];
+                if (detalleId != null) {
+                  await _eliminarDetallesEquipo(detalleId);
+                }
+              }
+            }
+            
+            // Eliminar el equipo principal
+            await supabaseClient
+                .from('t_computo_equipos_principales')
+                .delete()
+                .eq('id_equipo_principal', idEquipoPrincipal);
+            
+            debugPrint('✅ Equipo principal eliminado directamente');
+            
+            if (!mounted) return;
+            await _loadEquipos();
+            
+            if (mounted && _scaffoldMessengerKey.currentState != null) {
+              _scaffoldMessengerKey.currentState!.showSnackBar(
+                const SnackBar(
+                  content: Text('Equipo eliminado correctamente'),
+                  backgroundColor: Colors.green,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+            return; // Salir temprano si se eliminó el equipo principal
+          } catch (e) {
+            debugPrint('⚠️ Error al eliminar equipo principal directamente: $e');
+            throw Exception('No se pudo encontrar ni eliminar el equipo. Error: $e');
+          }
+        }
+        
+        if (idEquipoComputo == null) {
+          throw Exception('No se pudo encontrar el ID del equipo. El equipo puede no existir en la base de datos o ya fue eliminado.');
+        }
       }
 
       debugPrint('🗑️ Eliminando equipo con ID: $idEquipoComputo');
 
       // Eliminar primero los accesorios asociados
-      await _safeSupabaseCall(() => 
-        supabaseClient
+      try {
+        await supabaseClient
             .from('t_accesorios_equipos')
             .delete()
-            .eq('id_equipo_computo', idEquipoComputo)
-      );
+            .eq('id_equipo_computo', idEquipoComputo);
+        debugPrint('✅ Accesorios eliminados');
+      } catch (e) {
+        debugPrint('⚠️ Error al eliminar accesorios (puede que no existan): $e');
+      }
 
       // Eliminar registros relacionados en orden inverso de dependencias
       // 1. Observaciones
-      await _safeSupabaseCall(() => 
-        supabaseClient
+      try {
+        await supabaseClient
             .from('t_computo_observaciones')
             .delete()
-            .eq('id_equipo_computo', idEquipoComputo.toString())
-      );
+            .eq('id_equipo_computo', idEquipoComputo.toString());
+        debugPrint('✅ Observaciones eliminadas');
+      } catch (e) {
+        debugPrint('⚠️ Error al eliminar observaciones (puede que no existan): $e');
+      }
 
       // 2. Usuario final
-      await _safeSupabaseCall(() => 
-        supabaseClient
+      try {
+        await supabaseClient
             .from('t_computo_usuario_final')
             .delete()
-            .eq('id_equipo_computo', idEquipoComputo)
-      );
+            .eq('id_equipo_computo', idEquipoComputo);
+        debugPrint('✅ Usuario final eliminado');
+      } catch (e) {
+        debugPrint('⚠️ Error al eliminar usuario final (puede que no exista): $e');
+      }
 
       // 3. Identificación
-      await _safeSupabaseCall(() => 
-        supabaseClient
+      try {
+        await supabaseClient
             .from('t_computo_identificacion')
             .delete()
-            .eq('id_equipo_computo', idEquipoComputo)
-      );
+            .eq('id_equipo_computo', idEquipoComputo);
+        debugPrint('✅ Identificación eliminada');
+      } catch (e) {
+        debugPrint('⚠️ Error al eliminar identificación (puede que no exista): $e');
+      }
 
       // 4. Software
-      await _safeSupabaseCall(() => 
-        supabaseClient
+      try {
+        await supabaseClient
             .from('t_computo_software')
             .delete()
-            .eq('id_equipo_computo', idEquipoComputo)
-      );
+            .eq('id_equipo_computo', idEquipoComputo);
+        debugPrint('✅ Software eliminado');
+      } catch (e) {
+        debugPrint('⚠️ Error al eliminar software (puede que no exista): $e');
+      }
 
-      // 5. Detalles generales (tabla principal)
-      await _safeSupabaseCall(() => 
-        supabaseClient
-            .from('t_computo_detalles_generales')
-            .delete()
-            .eq('id_equipo_computo', idEquipoComputo)
-      );
+      // 5. Obtener el equipo_pm antes de eliminar para poder eliminar el equipo principal después
+      final equipoDetalle = await supabaseClient
+          .from('t_computo_detalles_generales')
+          .select('equipo_pm')
+          .eq('id_equipo_computo', idEquipoComputo)
+          .maybeSingle();
+      
+      final idEquipoPrincipalFinal = equipoDetalle?['equipo_pm'];
+      debugPrint('🔍 ID Equipo Principal asociado: $idEquipoPrincipalFinal');
 
-      debugPrint('✅ Equipo eliminado correctamente');
+      // 6. Detalles generales (tabla principal) - ESTA ES LA MÁS IMPORTANTE
+      final resultadoEliminacion = await supabaseClient
+          .from('t_computo_detalles_generales')
+          .delete()
+          .eq('id_equipo_computo', idEquipoComputo)
+          .select();
+      
+      debugPrint('🔍 Resultado de eliminación: $resultadoEliminacion');
+      
+      // Verificar que realmente se eliminó
+      if (resultadoEliminacion.isEmpty) {
+        throw Exception('No se pudo eliminar el equipo. Verifica las políticas RLS en Supabase.');
+      }
+
+      debugPrint('✅ Detalles del equipo eliminados correctamente');
+
+      // 7. Verificar si hay más detalles asociados al mismo equipo principal
+      if (idEquipoPrincipalFinal != null) {
+        try {
+          final otrosDetalles = await supabaseClient
+              .from('t_computo_detalles_generales')
+              .select('id_equipo_computo')
+              .eq('equipo_pm', idEquipoPrincipalFinal);
+          
+          debugPrint('🔍 Otros detalles del mismo equipo principal: ${otrosDetalles.length}');
+          
+          // Si no hay más detalles, eliminar también el equipo principal
+          if (otrosDetalles.isEmpty) {
+            debugPrint('🗑️ No hay más detalles, eliminando equipo principal: $idEquipoPrincipalFinal');
+            await supabaseClient
+                .from('t_computo_equipos_principales')
+                .delete()
+                .eq('id_equipo_principal', idEquipoPrincipalFinal);
+            debugPrint('✅ Equipo principal eliminado correctamente');
+          } else {
+            debugPrint('ℹ️ Hay ${otrosDetalles.length} detalles más asociados al equipo principal, no se elimina');
+          }
+        } catch (e) {
+          debugPrint('⚠️ Error al verificar/eliminar equipo principal: $e');
+          // No lanzar error, ya que los detalles principales se eliminaron correctamente
+        }
+      }
+
+      debugPrint('✅ Equipo eliminado completamente de la base de datos');
 
       if (!mounted) return;
 
@@ -3502,6 +3693,7 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
         );
       }
     } catch (e) {
+      debugPrint('❌ Error completo al eliminar equipo: $e');
       if (mounted && _scaffoldMessengerKey.currentState != null) {
         _scaffoldMessengerKey.currentState!.showSnackBar(
           SnackBar(
@@ -3511,6 +3703,83 @@ class _InventarioComputoScreenState extends State<InventarioComputoScreen> {
           ),
         );
       }
+    }
+  }
+
+  // Método auxiliar para eliminar todos los detalles relacionados de un equipo
+  Future<void> _eliminarDetallesEquipo(dynamic idEquipoComputo) async {
+    // Eliminar primero los accesorios asociados
+    try {
+      await supabaseClient
+          .from('t_accesorios_equipos')
+          .delete()
+          .eq('id_equipo_computo', idEquipoComputo);
+      debugPrint('✅ Accesorios eliminados para equipo $idEquipoComputo');
+    } catch (e) {
+      debugPrint('⚠️ Error al eliminar accesorios (puede que no existan): $e');
+    }
+
+    // Eliminar registros relacionados en orden inverso de dependencias
+    // 1. Observaciones
+    try {
+      await supabaseClient
+          .from('t_computo_observaciones')
+          .delete()
+          .eq('id_equipo_computo', idEquipoComputo.toString());
+      debugPrint('✅ Observaciones eliminadas para equipo $idEquipoComputo');
+    } catch (e) {
+      debugPrint('⚠️ Error al eliminar observaciones (puede que no existan): $e');
+    }
+
+    // 2. Usuario final
+    try {
+      await supabaseClient
+          .from('t_computo_usuario_final')
+          .delete()
+          .eq('id_equipo_computo', idEquipoComputo);
+      debugPrint('✅ Usuario final eliminado para equipo $idEquipoComputo');
+    } catch (e) {
+      debugPrint('⚠️ Error al eliminar usuario final (puede que no exista): $e');
+    }
+
+    // 3. Identificación
+    try {
+      await supabaseClient
+          .from('t_computo_identificacion')
+          .delete()
+          .eq('id_equipo_computo', idEquipoComputo);
+      debugPrint('✅ Identificación eliminada para equipo $idEquipoComputo');
+    } catch (e) {
+      debugPrint('⚠️ Error al eliminar identificación (puede que no exista): $e');
+    }
+
+    // 4. Software
+    try {
+      await supabaseClient
+          .from('t_computo_software')
+          .delete()
+          .eq('id_equipo_computo', idEquipoComputo);
+      debugPrint('✅ Software eliminado para equipo $idEquipoComputo');
+    } catch (e) {
+      debugPrint('⚠️ Error al eliminar software (puede que no exista): $e');
+    }
+
+    // 5. Detalles generales (tabla principal)
+    try {
+      final resultadoEliminacion = await supabaseClient
+          .from('t_computo_detalles_generales')
+          .delete()
+          .eq('id_equipo_computo', idEquipoComputo)
+          .select();
+      
+      if (resultadoEliminacion.isEmpty) {
+        debugPrint('⚠️ No se pudo eliminar detalles generales para equipo $idEquipoComputo');
+      } else {
+        debugPrint('✅ Detalles generales eliminados para equipo $idEquipoComputo');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error al eliminar detalles generales: $e');
+      rethrow; // Re-lanzar para que el método principal sepa que falló
     }
   }
 

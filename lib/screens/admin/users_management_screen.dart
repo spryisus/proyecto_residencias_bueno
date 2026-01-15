@@ -792,11 +792,19 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
                   ),
                 ),
 
-                // Formulario de creación
-                if (_showCreateForm) _buildCreateUserForm(),
+                // Formulario de creación (con scroll para evitar overflow)
+                if (_showCreateForm) 
+                  Flexible(
+                    flex: 1,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.only(bottom: 16.0),
+                      child: _buildCreateUserForm(),
+                    ),
+                  ),
 
                 // Lista de usuarios
                 Expanded(
+                  flex: _showCreateForm ? 1 : 2,
                   child: _empleados.isEmpty
                       ? Center(
                           child: Column(

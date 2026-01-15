@@ -76,3 +76,10 @@ WHERE dg.id_equipo_computo::TEXT = uf.id_equipo_computo::TEXT
 */
 
 
+
+
+
+
+
+
+

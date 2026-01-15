@@ -94,3 +94,5 @@ COMMIT;
 -- ORDER BY id_usuario_final
 -- LIMIT 20;
 
+
+

@@ -10,51 +10,61 @@ class RutinaStorage {
   final RutinaDataSource _supabaseDataSource = SupabaseRutinaDataSource();
 
   /// Obtiene todas las rutinas guardadas
+  /// Siempre prioriza Supabase sobre el caché local para mantener sincronización
   Future<List<Rutina>> getAllRutinas() async {
     try {
-      // Intentar obtener desde Supabase primero
+      // SIEMPRE intentar obtener desde Supabase primero (prioridad absoluta)
       final supabaseRutinas = await _supabaseDataSource.getAllRutinas();
       
-      // Si hay rutinas en Supabase, guardar en caché local y retornar
+      // Si hay rutinas en Supabase, actualizar caché local y retornar
       if (supabaseRutinas.isNotEmpty) {
+        debugPrint('✅ Rutinas obtenidas desde Supabase: ${supabaseRutinas.length}');
+        // Limpiar caché local y guardar las de Supabase (sincronización)
         await _saveToLocalCache(supabaseRutinas);
         // Filtrar rutinas vencidas (fecha pasada) y eliminar su fecha
         return await _processExpiredRutinas(supabaseRutinas);
       }
       
-      // Si no hay rutinas en Supabase, intentar cargar desde caché local
-      final cachedRutinas = await _getFromLocalCache();
-      if (cachedRutinas.isNotEmpty) {
-        return cachedRutinas;
-      }
-      
-      // Si no hay rutinas en ningún lado, crear las por defecto
+      // Si no hay rutinas en Supabase, crear las por defecto
+      debugPrint('⚠️ No hay rutinas en Supabase, creando por defecto...');
       final defaultRutinas = _createDefaultRutinas();
-      // Guardar las rutinas por defecto en Supabase
+      
+      // Intentar guardar las rutinas por defecto en Supabase
       for (final rutina in defaultRutinas) {
         try {
           await _supabaseDataSource.saveRutina(rutina);
         } catch (e) {
-          // Si falla Supabase, solo guardar localmente
           debugPrint('Error al guardar rutina por defecto en Supabase: $e');
         }
       }
+      
       // Recargar desde Supabase para obtener los IDs reales generados
       try {
         final rutinasConIds = await _supabaseDataSource.getAllRutinas();
         if (rutinasConIds.isNotEmpty) {
+          debugPrint('✅ Rutinas por defecto guardadas en Supabase: ${rutinasConIds.length}');
           await _saveToLocalCache(rutinasConIds);
           return await _processExpiredRutinas(rutinasConIds);
         }
       } catch (e) {
         debugPrint('Error al recargar rutinas después de crear por defecto: $e');
       }
+      
+      // Si Supabase falla completamente, usar caché local como último recurso
+      debugPrint('⚠️ Supabase no disponible, usando caché local como fallback');
       await _saveToLocalCache(defaultRutinas);
       return defaultRutinas;
     } catch (e) {
-      // Si hay error, intentar usar caché local
-      debugPrint('Error al obtener rutinas de Supabase: $e');
-      return await _getFromLocalCache();
+      // Si hay error con Supabase, usar caché local SOLO como fallback
+      debugPrint('❌ Error al obtener rutinas de Supabase: $e');
+      debugPrint('⚠️ Usando caché local como fallback (puede estar desactualizado)');
+      final cachedRutinas = await _getFromLocalCache();
+      if (cachedRutinas.isNotEmpty) {
+        debugPrint('✅ Rutinas obtenidas desde caché local: ${cachedRutinas.length}');
+        return cachedRutinas;
+      }
+      // Si no hay nada, crear por defecto
+      return _createDefaultRutinas();
     }
   }
 

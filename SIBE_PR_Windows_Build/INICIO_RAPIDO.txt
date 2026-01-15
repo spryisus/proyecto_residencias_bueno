@@ -1,0 +1,25 @@
+========================================
+   SIBE PR - INICIO RAPIDO WINDOWS
+========================================
+
+PASO 1: Instalar dependencias
+   flutter pub get
+
+PASO 2: Compilar
+   flutter build windows --release
+   
+   O ejecutar: COMPILAR.bat
+
+PASO 3: Ejecutar
+   Ir a: build\windows\x64\runner\Release\
+   Ejecutar: proyecto_residencia_2025_2026.exe
+
+========================================
+NOTAS IMPORTANTES:
+========================================
+
+- El programa usa el servidor de Render por defecto
+- Requiere conexion a internet para exportar Excel
+- Si no hay internet, intentara usar servidor local automaticamente
+
+========================================

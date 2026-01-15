@@ -65,3 +65,10 @@ CREATE TEMP TABLE temp_observaciones_import (
 
 
 
+
+
+
+
+
+
+
